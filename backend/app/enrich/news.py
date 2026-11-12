@@ -6,7 +6,7 @@ with, for each item: the type of event, whether the text reports exploitation, h
 the claim is, the sectors mentioned, and the story it belongs to.
 
 A story groups items from *different feeds* that report the same thing: same language,
-titles sharing most of their words, published within three days. The same story in Italian
+titles sharing several words, published within three days. The grouping is approximate. The same story in Italian
 and in English is still two stories; that needs a multilingual model and comes later.
 
 Labels come from keyword rules. They are deliberately simple and will be wrong on some
@@ -31,7 +31,11 @@ from ..sources import SOURCES
 
 RULES_FILE = Path(__file__).with_name("rules.json")
 STORY_WINDOW = timedelta(hours=72)
-STORY_SIMILARITY = 0.6
+# Tuned on the first real collection (341 press and advisory items, 12 Nov 2026): at 0.6 only
+# near-identical headlines matched; at 0.3 with four shared words, 10 pairs matched and about
+# 8 were the same story. Headlines that share fewer words are still missed.
+STORY_SIMILARITY = 0.3
+STORY_MIN_SHARED = 4
 STORY_MIN_TOKENS = 4
 
 SCHEMA = pa.schema(
@@ -108,55 +112,57 @@ def title_tokens(title: str) -> frozenset[str]:
 
 
 def assign_stories(items: list[dict]) -> dict[str, tuple[str, int]]:
-    """item_id -> (story_id, number of distinct feeds in the story)."""
-    parent = {i["item_id"]: i["item_id"] for i in items}
+    """item_id -> (story_id, number of distinct feeds in the story).
 
-    def find(x: str) -> str:
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    prepared = []
+    Items are read in time order. Each one joins the best-matching story that another feed
+    opened in the last three days, or opens a new story. An item is only ever compared with
+    the *first* item of a story, so a story cannot drift from one subject to another.
+    """
+    prepared = sorted(((item, title_tokens(item["title"])) for item in items),
+                      key=lambda pair: (pair[0]["when"], pair[0]["item_id"]))
     frequency: dict[str, int] = {}
-    for item in items:
-        tokens = title_tokens(item["title"])
-        prepared.append((item, tokens))
+    for _, tokens in prepared:
         for token in tokens:
             frequency[token] = frequency.get(token, 0) + 1
-    prepared.sort(key=lambda pair: pair[0]["when"])
 
-    postings: dict[str, list[int]] = {}
-    for index, (item, tokens) in enumerate(prepared):
-        if len(tokens) < STORY_MIN_TOKENS:
+    story_of: dict[str, str] = {}
+    leaders: list[tuple[dict, frozenset[str]]] = []
+    postings: dict[str, list[int]] = {}  # word -> positions in `leaders`, oldest first
+    for item, tokens in prepared:
+        best, best_score = None, 0.0
+        if len(tokens) >= STORY_MIN_TOKENS:
+            seen: set[int] = set()
+            for token in tokens:
+                for position in reversed(postings.get(token, [])):
+                    leader, leader_tokens = leaders[position]
+                    if item["when"] - leader["when"] > STORY_WINDOW:
+                        break
+                    if position in seen:
+                        continue
+                    seen.add(position)
+                    if leader["feed_id"] == item["feed_id"] or leader["language"] != item["language"]:
+                        continue
+                    if item["cves"] and leader["cves"] and not (item["cves"] & leader["cves"]):
+                        continue  # two different vulnerabilities are never the same story
+                    shared = len(tokens & leader_tokens)
+                    score = shared / len(tokens | leader_tokens)
+                    if shared >= STORY_MIN_SHARED and score >= STORY_SIMILARITY and score > best_score:
+                        best, best_score = leader, score
+        if best is not None:
+            story_of[item["item_id"]] = best["item_id"]
             continue
-        # Candidates are found through the item's rarest words, which keeps this fast.
-        rare = sorted(tokens, key=lambda t: (frequency[t], t))[:3]
-        seen: set[int] = set()
-        for token in rare:
-            for other_index in reversed(postings.get(token, [])):
-                other, other_tokens = prepared[other_index]
-                if item["when"] - other["when"] > STORY_WINDOW:
-                    break
-                if other_index in seen:
-                    continue
-                seen.add(other_index)
-                if other["feed_id"] == item["feed_id"] or other["language"] != item["language"]:
-                    continue
-                if item["cves"] and other["cves"] and not (item["cves"] & other["cves"]):
-                    continue  # two different vulnerabilities are never the same story
-                overlap = len(tokens & other_tokens) / len(tokens | other_tokens)
-                if overlap >= STORY_SIMILARITY:
-                    a, b = find(item["item_id"]), find(other["item_id"])
-                    if a != b:
-                        parent[max(a, b)] = min(a, b)
-        for token in tokens:
-            postings.setdefault(token, []).append(index)
+        story_of[item["item_id"]] = item["item_id"]
+        if len(tokens) >= STORY_MIN_TOKENS:
+            leaders.append((item, tokens))
+            for token in tokens:
+                # Very common words would make every item a candidate; they add nothing.
+                if frequency[token] <= max(50, len(prepared) // 20):
+                    postings.setdefault(token, []).append(len(leaders) - 1)
 
     feeds: dict[str, set[str]] = {}
-    for item in items:
-        feeds.setdefault(find(item["item_id"]), set()).add(item["feed_id"])
-    return {i["item_id"]: (find(i["item_id"]), len(feeds[find(i["item_id"])])) for i in items}
+    for item, _ in prepared:
+        feeds.setdefault(story_of[item["item_id"]], set()).add(item["feed_id"])
+    return {item_id: (story, len(feeds[story])) for item_id, story in story_of.items()}
 
 
 # --- storage -------------------------------------------------------------------

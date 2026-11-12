@@ -203,6 +203,9 @@ from app.enrich import news as enrich  # noqa: E402
         ("Operation Endgame takes down botnet infrastructure", "specialist", [], "other", False, "reported", []),
         ("CVE-2026-20320 Windows Kernel Elevation of Privilege", "primary", ["CVE-2026-20320"],
          "vulnerability_disclosure", False, "official", []),
+        ("Windows Internet Connection Sharing (ICS) Elevation of Privilege Vulnerability", "primary",
+         ["CVE-2026-119859"], "vulnerability_disclosure", False, "official", []),
+        ("ICS advisory: flaws in PLC firmware", "primary", [], "cyber_physical", False, "official", []),
     ],
 )
 def test_classification_rules(title, kind, cves, event, exploited, claim, sectors):
@@ -234,6 +237,22 @@ def test_stories_group_the_same_report_across_feeds_only():
     assert stories["e1"] == ("e1", 1)  # another language: not merged yet
     assert stories["m1"][0] != stories["x1"][0]  # different CVEs never merge
     assert stories["s1"][0] != stories["s2"][0]  # too few words to compare safely
+
+
+def test_stories_match_reworded_headlines_but_do_not_drift():
+    items = [
+        _item("p1", "feedA", "Poland takes its national e-government platform offline after a cyberattack"),
+        _item("p2", "feedB", "Poland shuts down government services platform ePUAP following cyberattack", hours=3),
+        _item("z1", "feedA", "Zoom fixes critical Windows vulnerability allowing privilege escalation", hours=4),
+        _item("z2", "feedC", "Critical Zoom Workplace flaw could allow unauthenticated remote privilege escalation", hours=6),
+        # shares words with z2 but not with z1, which opened the story: stays out
+        _item("q1", "feedD", "Unauthenticated remote flaw could allow attackers into Acme Workplace routers", hours=7),
+        _item("u1", "feedB", "Researchers publish a study on password habits among students", hours=8),
+    ]
+    stories = enrich.assign_stories(items)
+    assert stories["p1"] == stories["p2"] == ("p1", 2)
+    assert stories["z1"] == stories["z2"] == ("z1", 2)
+    assert stories["q1"] == ("q1", 1) and stories["u1"] == ("u1", 1)
 
 
 def test_labels_are_built_after_collection_and_served(news):

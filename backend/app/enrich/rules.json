@@ -1,10 +1,10 @@
 {
-  "version": "2026.11.12-1",
-  "note": "Keyword rules for news items, English and Italian. Patterns are regular expressions matched on lower-cased title + summary; \\b is added on the left automatically. Crude by design: they label, they do not understand. Bump 'version' on every change so derived data is rebuilt.",
+  "version": "2026.11.12-2",
+  "note": "Keyword rules for news items, English and Italian. Patterns are regular expressions matched on lower-cased title + summary; \\b is added on the left automatically. Crude by design: they label, they do not understand. Bump 'version' on every change to the rules or to the story grouping, so derived data is rebuilt.",
   "event_types": [
     {"id": "hoax_disruption", "patterns": ["bomb (threat|hoax|scare)s?", "hoax", "swatting", "false alarms?", "allarm[ei] bomba", "fals[oi] allarm[ei]", "minacc[ei]a? di bomb[ae]", "mail minator"]},
     {"id": "ransomware", "patterns": ["ransomware", "ransom (demand|note|payment)", "double extortion", "riscatto", "lockbit", "data[- ]leak site"]},
-    {"id": "cyber_physical", "patterns": ["scada", "industrial control", "\\bics\\b", "operational technology", "\\bot (network|system|environment)s?", "plc\\b", "building automation", "water (plant|utility|treatment)", "power grid", "refrigerat", "frigorifer", "surgelat", "impiant[oi] industrial", "rete elettrica", "sabotag"]},
+    {"id": "cyber_physical", "patterns": ["scada", "industrial control", "ics[- ](advisor|security|system|environment|device)", "operational technology", "\\bot (network|system|environment)s?", "plc\\b", "building automation", "water (plant|utility|treatment)", "power grid", "refrigerat", "frigorifer", "surgelat", "impiant[oi] industrial", "rete elettrica", "sabotag"]},
     {"id": "data_breach", "patterns": ["data breach", "data leak", "leaked (data|records|database)", "stolen (data|records|credentials)", "exposed (data|records|database)", "records (exposed|stolen|leaked)", "violazione (dei|di) dati", "furto di dati", "dati (rubati|trafugati|esposti|sottratti)", "esfiltra"]},
     {"id": "service_disruption", "patterns": ["ddos", "denial[- ]of[- ]service attack", "knocked offline", "taken offline", "outage", "fuori servizio", "sit[oi] (web )?(irraggiungibil|bloccat|in tilt)", "servizi (bloccati|interrotti)"]}
   ],
