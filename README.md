@@ -38,6 +38,7 @@ Dentro `data/`:
 
 ```
 raw/<fonte>/<data>/            file originale così come scaricato, più meta.json
+derived/                       dati ricalcolabili (etichette delle notizie)
 curated/<fonte>/snapshot_date=<data>/data.parquet   tabella normalizzata
 state/fucmonitor.sqlite        storico delle esecuzioni
 ```
@@ -54,6 +55,12 @@ stampa generalista tiene solo gli articoli che contengono una delle parole chiav
 
 Di ogni elemento si salvano titolo, link, un breve sommario, lingua, tipo di fonte, i CVE
 citati, l'ora di pubblicazione e l'ora in cui è stato raccolto. Non si salvano gli articoli completi.
+
+A ogni elemento vengono poi assegnate delle etichette con regole a parole chiave
+(`backend/app/enrich/rules.json`): tipo di evento, se il testo riporta uno sfruttamento, quanto è
+solida l'affermazione, i settori citati e la notizia a cui appartiene quando più feed la riprendono.
+Sono etichette semplici, utili per vedere le tendenze, e una parte è sbagliata. Si ricalcolano
+da zero a ogni modifica delle regole; i dati raccolti non vengono toccati.
 
 Per aggiungere, correggere o sospendere un feed basta modificare `feeds.json`: la modifica
 vale dalla raccolta successiva. Lo stato di ogni feed è nella sezione "Notizie e avvisi" della dashboard.

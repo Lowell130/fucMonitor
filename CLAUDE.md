@@ -20,6 +20,9 @@ Local, zero-cost app that forecasts which technology categories will be exploite
   A source downloads, stores the raw bytes, writes one Parquet per snapshot date.
 - `backend/app/sources/news.py` + `feeds.json`: hourly RSS/Atom collection. Items are keyed by
   feed + guid and grouped by the UTC day first seen. `first_seen_at` is the modelling timestamp.
+- `backend/app/enrich/news.py` + `rules.json`: derived news labels (event type, exploitation signal,
+  claim status, sectors, stories). Raw items are never changed; `derived/` can be deleted and rebuilt.
+  Bump `version` in `rules.json` on every rule change.
 - `backend/app/queries.py`: read-only DuckDB queries over Parquet (in-memory connections).
 - `backend/app/state.py`: SQLite job history. Operational state only, no analytical data.
 - `backend/app/runner.py`: runs an ingestion and records the result. Failures are stored, not raised.

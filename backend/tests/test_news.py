@@ -180,3 +180,119 @@ def test_shipped_feeds_file_is_valid(settings):
     config = load_feeds(settings)
     assert len(config["feeds"]) >= 15 and config["general_keywords"]
     assert all(f["url"].startswith("https://") and f["language"] in ("en", "it") for f in config["feeds"])
+
+
+# --- derived labels ------------------------------------------------------------
+from app.enrich import news as enrich  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    "title, kind, cves, event, exploited, claim, sectors",
+    [
+        ("Nuovi allarmi bomba a 1800 scuole, mail partita da più indirizzi", "general", [],
+         "hoax_disruption", False, "reported", ["education"]),
+        ("Fortinet warns of FortiWeb flaw actively exploited in the wild", "specialist", ["CVE-2026-1"],
+         "vulnerability_exploitation", True, "reported", []),
+        ("Risolte vulnerabilità in PrestaShop", "primary", [], "vulnerability_disclosure", False, "official", []),
+        ("Hackers claim breach of airline, stolen data reportedly for sale", "specialist", [],
+         "data_breach", False, "unverified", ["aviation"]),
+        ("Attacco hacker ai frigoriferi dei supermercati in Europa", "specialist", [],
+         "cyber_physical", False, "reported", ["retail_food"]),
+        ("Romania says it stopped ransomware attack on water utility", "specialist", [],
+         "ransomware", False, "reported", ["energy_utilities"]),
+        ("Operation Endgame takes down botnet infrastructure", "specialist", [], "other", False, "reported", []),
+        ("CVE-2026-20320 Windows Kernel Elevation of Privilege", "primary", ["CVE-2026-20320"],
+         "vulnerability_disclosure", False, "official", []),
+    ],
+)
+def test_classification_rules(title, kind, cves, event, exploited, claim, sectors):
+    assert enrich.classify(title, "", kind, cves) == {
+        "event_type": event, "exploitation_signal": exploited, "claim_status": claim, "target_sectors": sectors}
+
+
+def _item(item_id, feed, title, hours=0, language="en", cves=()):
+    when = datetime(2026, 11, 10, tzinfo=timezone.utc) + __import__("datetime").timedelta(hours=hours)
+    return {"item_id": item_id, "feed_id": feed, "title": title, "language": language, "when": when,
+            "cves": frozenset(cves)}
+
+
+def test_stories_group_the_same_report_across_feeds_only():
+    items = [
+        _item("a1", "feedA", "Fortinet patches critical FortiWeb flaw exploited in attacks"),
+        _item("b1", "feedB", "Fortinet patches critical FortiWeb flaw exploited in the wild", hours=5),
+        _item("c1", "feedC", "Critical FortiWeb flaw exploited in attacks, Fortinet patches", hours=30),
+        _item("a2", "feedA", "Fortinet patches critical FortiWeb flaw exploited in attacks again", hours=1),
+        _item("d1", "feedD", "Fortinet patches critical FortiWeb flaw exploited in attacks", hours=24 * 9),
+        _item("e1", "feedE", "Fortinet corregge falla critica FortiWeb sfruttata negli attacchi", language="it"),
+        _item("m1", "ms", "CVE-2026-0001 Windows Kernel Elevation of Privilege Vulnerability", cves=["CVE-2026-0001"]),
+        _item("x1", "press", "CVE-2026-0002 Windows Kernel Elevation of Privilege Vulnerability", cves=["CVE-2026-0002"]),
+        _item("s1", "feedA", "Short title"), _item("s2", "feedB", "Short title"),
+    ]
+    stories = enrich.assign_stories(items)
+    assert stories["a1"] == stories["b1"] == stories["c1"] == ("a1", 3)
+    assert stories["d1"] == ("d1", 1)  # nine days later: a different story
+    assert stories["e1"] == ("e1", 1)  # another language: not merged yet
+    assert stories["m1"][0] != stories["x1"][0]  # different CVEs never merge
+    assert stories["s1"][0] != stories["s2"][0]  # too few words to compare safely
+
+
+def test_labels_are_built_after_collection_and_served(news):
+    settings, upstream, client = news
+    upstream["gen"] = GENERAL.replace(
+        b"</channel>",
+        b"<item><title>Acme gateway flaw CVE-2026-1234 exploited and patched</title>"
+        b"<link>https://example.org/g3</link><guid>g3</guid><description>hacker</description>"
+        b"<pubDate>Wed, 11 Nov 2026 12:00:00 +0000</pubDate></item></channel>")
+    with TestClient(app) as api:
+        runner.run_source(settings, "news", client=client)
+        assert enrich.enriched_path(settings).exists() and enrich.is_current(settings)
+
+        items = {i["title"]: i for i in api.get("/api/v1/news").json()["items"]}
+        bomb = items["Allarme bomba in una scuola, istituto evacuato"]
+        assert (bomb["event_type"], bomb["claim_status"], bomb["target_sectors"]) == (
+            "hoax_disruption", "reported", ["education"])
+        assert items["Advisory one"]["claim_status"] == "official"
+
+        # the same report from two feeds (one of them English text in an Italian feed: not merged)
+        assert api.get("/api/v1/news", params={"event_type": "hoax_disruption"}).json()["total"] == 1
+        assert api.get("/api/v1/news", params={"sector": "education"}).json()["total"] == 1
+        assert api.get("/api/v1/news", params={"claim_status": "official"}).json()["total"] == 1
+        assert api.get("/api/v1/news", params={"exploited": True}).json()["total"] == 0
+        assert api.get("/api/v1/news", params={"collapse": True}).json()["total"] == 6
+
+        trend = api.get("/api/v1/news/trend", params={"by": "sector", "days": 365}).json()["items"]
+        assert [(t["key"], t["stories"]) for t in trend] == [("education", 1)]
+        assert api.get("/api/v1/news/trend", params={"by": "nope"}).status_code == 422
+
+        # deleting the derived table loses nothing: it is rebuilt from the raw items
+        enrich.enriched_path(settings).unlink()
+        assert api.get("/api/v1/news").json()["items"][0]["event_type"] is None
+        assert api.post("/api/v1/news/relabel").json() == {"items": 6}
+        assert api.get("/api/v1/news", params={"event_type": "hoax_disruption"}).json()["total"] == 1
+
+
+def test_story_collapse_keeps_one_row_per_story(news):
+    settings, upstream, client = news
+    same = (b"<rss version='2.0'><channel><item><title>Acme gateway flaw CVE-2026-1234 exploited &amp; patched</title>"
+            b"<link>https://example.org/dup</link><guid>dup</guid>"
+            b"<pubDate>Wed, 11 Nov 2026 10:00:00 +0100</pubDate></item></channel></rss>")
+    upstream["atom"] = same  # the 'atom' feed now repeats the story of the 'rss' feed
+    runner.run_source(settings, "news", client=client)
+    full = queries.news_list(settings, 50, 0, search="Acme gateway")
+    assert full["total"] == 2 and {i["story_feeds"] for i in full["items"]} == {2}
+    one = queries.news_list(settings, 50, 0, search="Acme gateway", collapse=True)
+    assert one["total"] == 1 and one["items"][0]["feed_id"] == "rss"  # earliest report wins
+
+
+def test_rules_and_taxonomy_agree():
+    import json
+    from pathlib import Path
+
+    taxonomy = json.loads((Path(enrich.__file__).parents[1] / "taxonomy" / "categories.json").read_text())
+    rules = json.loads(enrich.RULES_FILE.read_text())
+    events = {e["id"] for e in taxonomy["event_types"]}
+    sectors = {e["id"] for e in taxonomy["target_sectors"]}
+    assert {r["id"] for r in rules["event_types"]} <= events
+    assert {r["id"] for r in rules["target_sectors"]} == sectors
+    assert {"vulnerability_exploitation", "vulnerability_disclosure", "other"} <= events
+    assert {c["id"] for c in taxonomy["claim_statuses"]} == {"official", "reported", "unverified"}

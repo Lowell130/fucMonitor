@@ -45,9 +45,19 @@ Fatto:
 - Bozza della tassonomia (15 categorie, 6 tipi di evento), non ancora usata dai dati.
 - Raccolta grezza oraria di notizie e avvisi da feed RSS in italiano e inglese, con estrazione dei CVE citati.
 
+- Etichette derivate sulle notizie, da regole a parole chiave: tipo di evento, segnale di sfruttamento,
+  solidità (fonte ufficiale, riportato, rivendicazione o ipotesi), settori citati, raggruppamento della
+  stessa notizia tra feed diversi nella stessa lingua.
+
+Limiti noti delle notizie:
+
+- Le regole sono semplici e sbagliano su una parte degli elementi. Ogni etichetta riporta la versione delle regole.
+- La stessa notizia in italiano e in inglese non viene ancora raggruppata: serve un modello multilingue.
+- Il feed Microsoft pubblica una voce per ogni CVE, quindi pesa molto sui conteggi degli avvisi.
+
 Prossimi passi, in ordine:
 
-1. Notizie: deduplica tra feed diversi, classificazione del tipo di evento, distinzione tra fatto e ipotesi.
+1. Notizie: raggruppamento multilingue e verifica a campione della qualità delle regole.
 2. NVD e CPE, exploit pubblici (Exploit-DB, Metasploit, Nuclei), altre etichette di sfruttamento.
 3. Mappatura prodotto → categoria con editor e coda di revisione.
 4. Dataset a livello CVE, baseline e primo modello, confronto con EPSS.

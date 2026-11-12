@@ -13,6 +13,15 @@ RUN = {"id": 1, "source": "kev", "trigger": "manual", "status": "success", "star
 FAILED = {**RUN, "id": 2, "source": "epss", "status": "failed", "message": "HTTPStatusError: 503", "rows": None}
 
 
+TAXONOMY = {
+    "event_types": [{"id": "hoax_disruption", "en": "Hoax", "it": "Falsi allarmi"},
+                    {"id": "vulnerability_exploitation", "en": "Exploitation", "it": "Sfruttamento"},
+                    {"id": "vulnerability_disclosure", "en": "Disclosure", "it": "Divulgazione"}],
+    "target_sectors": [{"id": "education", "en": "Schools", "it": "Scuole"}],
+    "claim_statuses": [{"id": "reported", "en": "Reported", "it": "Riportato"}],
+}
+
+
 def source(name, **over):
     base = {"name": name, "title": name.upper(), "homepage": "https://example.org", "running": False,
             "snapshots": 2, "first_snapshot_date": "2026-11-11", "latest_snapshot_date": "2026-11-12",
@@ -39,10 +48,16 @@ FULL = {
     "/api/v1/news": {"total": 2, "items": [
         {"item_id": "a", "feed_id": "rss", "feed_title": "Sec", "source_kind": "specialist", "language": "en",
          "title": "Flaw exploited", "link": "https://example.org/a", "summary": "s", "published_at": "2026-11-12T08:00:00Z",
-         "first_seen_at": "2026-11-12T09:00:00Z", "cve_ids": ["CVE-2026-1234"]},
+         "first_seen_at": "2026-11-12T09:00:00Z", "cve_ids": ["CVE-2026-1234"], "event_type": "vulnerability_exploitation",
+         "exploitation_signal": True, "claim_status": "reported", "target_sectors": [], "story_id": "a", "story_feeds": 2},
         {"item_id": "b", "feed_id": "gen", "feed_title": "Gen", "source_kind": "general", "language": "it",
          "title": "Allarme", "link": "", "summary": "", "published_at": None,
-         "first_seen_at": "2026-11-12T09:00:00Z", "cve_ids": []}]},
+         "first_seen_at": "2026-11-12T09:00:00Z", "cve_ids": [], "event_type": None,
+         "exploitation_signal": None, "claim_status": None, "target_sectors": None, "story_id": "b", "story_feeds": 1}]},
+    "/api/v1/news/trend": {"by": "event_type", "days": 14, "items": [
+        {"day": "2026-11-11", "key": "hoax_disruption", "stories": 4}, {"day": "2026-11-12", "key": "hoax_disruption", "stories": 7},
+        {"day": "2026-11-12", "key": "education", "stories": 3}]},
+    "/api/v1/taxonomy": TAXONOMY,
     "/api/v1/news/feeds": {"items": [
         {"id": "rss", "title": "Sec", "url": "https://x/rss", "language": "en", "kind": "specialist", "enabled": True,
          "last_fetch_at": "2026-11-12T09:00:00Z", "last_status": "ok", "last_message": "", "last_success_at": "x",
@@ -64,6 +79,8 @@ EMPTY = {
     "/api/v1/kev": {"snapshot_date": None, "total": 0, "items": []},
     "/api/v1/epss/top": {"snapshot_date": None, "items": []},
     "/api/v1/news": {"total": 0, "items": []},
+    "/api/v1/news/trend": {"by": "event_type", "days": 14, "items": []},
+    "/api/v1/taxonomy": TAXONOMY,
     "/api/v1/news/feeds": {"items": [
         {"id": "rss", "title": "Sec", "url": "https://x/rss", "language": "en", "kind": "specialist", "enabled": True,
          "last_fetch_at": None, "last_status": None, "last_message": None, "last_success_at": None,

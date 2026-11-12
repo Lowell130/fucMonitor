@@ -1,5 +1,5 @@
 {
-  "version": "0.1-draft",
+  "version": "0.2-draft",
   "note": "Draft. IDs are stable and used by data and models; labels are for display only. English is the reference language.",
   "technology_categories": [
     {"id": "vpn_remote_access", "en": "VPN and remote access gateways", "it": "VPN e gateway di accesso remoto"},
@@ -20,10 +20,28 @@
   ],
   "event_types": [
     {"id": "vulnerability_exploitation", "en": "Exploitation of a vulnerability", "it": "Sfruttamento di una vulnerabilità"},
+    {"id": "vulnerability_disclosure", "en": "Vulnerability disclosed or patched", "it": "Vulnerabilità divulgata o corretta"},
     {"id": "cyber_physical", "en": "Cyber-physical or OT disruption", "it": "Interruzione cyber-fisica o OT"},
     {"id": "hoax_disruption", "en": "Hoax or disruption campaign", "it": "Campagna di falsi allarmi o disturbo"},
     {"id": "ransomware", "en": "Ransomware", "it": "Ransomware"},
     {"id": "data_breach", "en": "Data breach", "it": "Violazione di dati"},
-    {"id": "service_disruption", "en": "Denial of service", "it": "Interruzione di servizio"}
+    {"id": "service_disruption", "en": "Denial of service", "it": "Interruzione di servizio"},
+    {"id": "other", "en": "Other", "it": "Altro"}
+  ],
+  "target_sectors": [
+    {"id": "education", "en": "Schools and universities", "it": "Scuole e università"},
+    {"id": "aviation", "en": "Airports and aviation", "it": "Aeroporti e aviazione"},
+    {"id": "transport", "en": "Rail, shipping and logistics", "it": "Ferrovie, navigazione e logistica"},
+    {"id": "healthcare", "en": "Healthcare", "it": "Sanità"},
+    {"id": "retail_food", "en": "Retail and food", "it": "Commercio e alimentare"},
+    {"id": "energy_utilities", "en": "Energy and utilities", "it": "Energia e servizi di rete"},
+    {"id": "government", "en": "Government and public bodies", "it": "Governo ed enti pubblici"},
+    {"id": "finance", "en": "Banking and finance", "it": "Banche e finanza"},
+    {"id": "media_telecom", "en": "Media and telecom", "it": "Media e telecomunicazioni"}
+  ],
+  "claim_statuses": [
+    {"id": "official", "en": "Official source", "it": "Fonte ufficiale"},
+    {"id": "reported", "en": "Reported by the press", "it": "Riportato dalla stampa"},
+    {"id": "unverified", "en": "Claim or hypothesis", "it": "Rivendicazione o ipotesi"}
   ]
 }

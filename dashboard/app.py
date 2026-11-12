@@ -186,35 +186,87 @@ def page_pipeline() -> None:
     )
 
 
+def labels(group: str) -> dict[str, str]:
+    """Display labels for taxonomy IDs, in the current language."""
+    return {entry["id"]: entry.get(lang) or entry["en"] for entry in get("/api/v1/taxonomy").get(group, [])}
+
+
 def page_news() -> None:
     st.header(t("nav.news"))
+    events, sectors, claims = labels("event_types"), labels("target_sectors"), labels("claim_statuses")
     any_value = t("news.any")
-    a, b, c, d = st.columns([3, 1, 1, 1])
+
+    def choice(column, label: str, options: dict[str, str]) -> str | None:
+        picked = column.selectbox(label, [any_value, *options], format_func=lambda k: options.get(k, k))
+        return None if picked == any_value else picked
+
+    a, b, c = st.columns([2, 1, 1])
     search = a.text_input(t("news.search"))
-    language = b.selectbox(t("news.language"), [any_value, "en", "it"])
-    kind = c.selectbox(
-        t("news.kind"), [any_value, "primary", "specialist", "general"],
-        format_func=lambda k: k if k == any_value else t(f"kind.{k}"),
-    )
-    d.write("")
+    event = choice(b, t("news.event"), events)
+    sector = choice(c, t("news.sector"), sectors)
+    a, b, c, d = st.columns(4)
+    claim = choice(a, t("news.claim"), claims)
+    kind = choice(b, t("news.kind"), {k: t(f"kind.{k}") for k in ("primary", "specialist", "general")})
+    language = choice(c, t("news.language"), {"en": "English", "it": "Italiano"})
     only_cve = d.checkbox(t("news.only_cve"))
+    only_exploited = d.checkbox(t("news.only_exploited"))
+    collapse = d.checkbox(t("news.collapse"), value=True)
+
     data = get(
-        "/api/v1/news", limit=500, search=search.strip(),
-        language=None if language == any_value else language,
-        kind=None if kind == any_value else kind,
-        has_cve="true" if only_cve else None,
+        "/api/v1/news", limit=500, search=search.strip(), event_type=event, sector=sector,
+        claim_status=claim, kind=kind, language=language,
+        has_cve="true" if only_cve else None, exploited="true" if only_exploited else None,
+        collapse="true" if collapse else None,
     )
     feeds = get("/api/v1/news/feeds")["items"]
     if data["total"] == 0 and not any(f["last_fetch_at"] for f in feeds):
         st.info(t("common.no_data"))
         return
-    st.caption(t("news.count", n=data["total"]))
+    st.caption(t("news.count_stories", n=data["total"]) if collapse else t("news.count", n=data["total"]))
+    rows = [
+        {**item,
+         "event_type": events.get(item["event_type"], item["event_type"]),
+         "claim_status": claims.get(item["claim_status"], item["claim_status"]),
+         "target_sectors": [sectors.get(x, x) for x in item["target_sectors"] or []]}
+        for item in data["items"]
+    ]
     table(
-        data["items"],
-        ["published_at", "feed_title", "language", "title", "cve_ids", "link", "summary", "first_seen_at"],
+        rows,
+        ["published_at", "feed_title", "title", "event_type", "claim_status", "target_sectors",
+         "exploitation_signal", "story_feeds", "cve_ids", "link", "summary", "language", "first_seen_at"],
         links=("link",),
     )
     st.caption(t("news.help"))
+
+    st.subheader(t("news.trend"))
+    a, b, c = st.columns([1, 1, 2])
+    by = a.radio(t("news.trend_by"), ["event_type", "sector"], format_func=lambda k: t(f"news.by_{k}"), horizontal=True)
+    days = b.select_slider(t("news.trend_days"), [7, 14, 30, 90], value=14)
+    names = events if by == "event_type" else sectors
+    quiet = [k for k in ("vulnerability_disclosure", "other") if k in names] if by == "event_type" else []
+    shown = c.multiselect(
+        t("news.trend_show"), list(names), default=[k for k in names if k not in quiet],
+        format_func=lambda k: names.get(k, k),
+    )
+    trend = [r for r in get("/api/v1/news/trend", by=by, days=days)["items"] if r["key"] in shown]
+    if trend:
+        frame = pd.DataFrame(trend)
+        frame["day"] = pd.to_datetime(frame["day"])
+        frame["label"] = frame["key"].map(lambda k: names.get(k, k))
+        st.altair_chart(
+            alt.Chart(frame)
+            .mark_bar()
+            .encode(
+                x=alt.X("yearmonthdate(day):O", title=None, axis=alt.Axis(format="%d %b", labelAngle=0)),
+                y=alt.Y("stories:Q", title=t("news.trend_axis")),
+                color=alt.Color("label:N", title=None, legend=alt.Legend(orient="bottom", columns=3)),
+                tooltip=[alt.Tooltip("day:T", format="%Y-%m-%d"), "label:N", "stories:Q"],
+            ),
+            width="stretch",
+        )
+    else:
+        st.info(t("news.trend_empty"))
+    st.caption(t("news.trend_help"))
 
     st.subheader(t("news.feeds"))
     active = [f for f in feeds if f["enabled"]]

@@ -9,6 +9,7 @@ from pathlib import Path
 import duckdb
 
 from .config import Settings
+from .enrich import news as news_enrich
 from .sources import SOURCES
 
 
@@ -127,43 +128,82 @@ def _utc(value) -> str | None:
     return value.strftime("%Y-%m-%dT%H:%M:%SZ") if value is not None else None
 
 
+_UTC_DAY = "CAST(make_timestamp(CAST(epoch(coalesce(published_at, first_seen_at)) * 1000000 AS BIGINT)) AS DATE)"
+
+
+def _news_source(settings: Settings) -> tuple[str, list] | None:
+    """SQL for the raw items joined with their derived labels, plus its parameters."""
+    files = _news_files(settings)
+    if not files:
+        return None
+    enriched = news_enrich.enriched_path(settings)
+    if enriched.exists():
+        sql = """(SELECT r.*, e.event_type, e.exploitation_signal, e.claim_status, e.target_sectors,
+                         coalesce(e.story_id, r.item_id) AS story_id, coalesce(e.story_feeds, 1) AS story_feeds
+                  FROM read_parquet(?, hive_partitioning = true) r
+                  LEFT JOIN read_parquet(?) e USING (item_id))"""
+        return sql, [files, enriched.as_posix()]
+    sql = """(SELECT r.*, NULL::VARCHAR AS event_type, NULL::BOOLEAN AS exploitation_signal,
+                     NULL::VARCHAR AS claim_status, []::VARCHAR[] AS target_sectors,
+                     r.item_id AS story_id, 1 AS story_feeds
+              FROM read_parquet(?, hive_partitioning = true) r)"""
+    return sql, [files]
+
+
 def news_list(
     settings: Settings,
     limit: int,
     offset: int,
-    search: str | None,
-    feed: str | None,
-    language: str | None,
-    kind: str | None,
-    has_cve: bool | None,
-    since: date | None,
+    search: str | None = None,
+    feed: str | None = None,
+    language: str | None = None,
+    kind: str | None = None,
+    has_cve: bool | None = None,
+    since: date | None = None,
+    event_type: str | None = None,
+    claim_status: str | None = None,
+    sector: str | None = None,
+    exploited: bool | None = None,
+    collapse: bool = False,
 ) -> dict:
-    files = _news_files(settings)
-    if not files:
+    source = _news_source(settings)
+    if source is None:
         return {"total": 0, "items": []}
-    where, params = ["true"], [files]
+    sql, params = source
+    where = ["true"]
     if search:
         where.append("(title ILIKE ? OR summary ILIKE ? OR list_contains(cve_ids, upper(?)))")
         params += [f"%{search}%", f"%{search}%", search.strip()]
-    for column, value in (("feed_id", feed), ("language", language), ("source_kind", kind)):
+    for column, value in (("feed_id", feed), ("language", language), ("source_kind", kind),
+                          ("event_type", event_type), ("claim_status", claim_status)):
         if value:
             where.append(f"{column} = ?")
             params.append(value)
+    if sector:
+        where.append("list_contains(target_sectors, ?)")
+        params.append(sector)
     if has_cve is not None:
         where.append("len(cve_ids) > 0" if has_cve else "len(cve_ids) = 0")
+    if exploited is not None:
+        where.append("exploitation_signal" if exploited else "NOT coalesce(exploitation_signal, false)")
     if since:
         where.append("snapshot_date >= ?")
         params.append(since)
-    clause = " AND ".join(where)
-    source = "read_parquet(?, hive_partitioning = true)"
-    total = _rows(f"SELECT count(*) AS n FROM {source} WHERE {clause}", params)[0]["n"]
+    # One row per story: the earliest item of each story among those that match.
+    qualify = (
+        "QUALIFY row_number() OVER (PARTITION BY story_id "
+        "ORDER BY coalesce(published_at, first_seen_at), item_id) = 1" if collapse else ""
+    )
+    base = f"SELECT * FROM {sql} WHERE {' AND '.join(where)} {qualify}"
+    total = _rows(f"SELECT count(*) AS n FROM ({base})", params)[0]["n"]
     # Timestamps are stored in UTC. epoch() avoids any dependency on the session time zone.
     items = _rows(
         f"""SELECT item_id, feed_id, feed_title, source_kind, language, title, link, summary,
                    make_timestamp(CAST(epoch(published_at) * 1000000 AS BIGINT)) AS published_at,
                    make_timestamp(CAST(epoch(first_seen_at) * 1000000 AS BIGINT)) AS first_seen_at,
-                   cve_ids
-            FROM {source} WHERE {clause}
+                   cve_ids, event_type, exploitation_signal, claim_status, target_sectors,
+                   story_id, story_feeds
+            FROM ({base})
             ORDER BY coalesce(published_at, first_seen_at) DESC, item_id LIMIT ? OFFSET ?""",
         params + [limit, offset],
     )
@@ -171,6 +211,25 @@ def news_list(
         item["published_at"] = _utc(item["published_at"])
         item["first_seen_at"] = _utc(item["first_seen_at"])
     return {"total": total, "items": items}
+
+
+def news_trend(settings: Settings, by: str, days: int) -> dict:
+    """Distinct stories per day (publication day, UTC) by event type or by sector."""
+    source = _news_source(settings)
+    if source is None:
+        return {"by": by, "days": days, "items": []}
+    sql, params = source
+    if by == "sector":
+        inner = f"SELECT {_UTC_DAY} AS day, unnest(target_sectors) AS key, story_id FROM {sql}"
+    else:
+        inner = f"SELECT {_UTC_DAY} AS day, event_type AS key, story_id FROM {sql}"
+    items = _rows(
+        f"""SELECT day, key, count(DISTINCT story_id) AS stories FROM ({inner})
+            WHERE key IS NOT NULL AND day > current_date - ?::INTEGER AND day <= current_date + 1
+            GROUP BY 1, 2 ORDER BY 1, 2""",
+        params + [days],
+    )
+    return {"by": by, "days": days, "items": items}
 
 
 def news_daily(settings: Settings) -> dict:

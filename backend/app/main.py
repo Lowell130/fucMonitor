@@ -212,8 +212,31 @@ def news(
     kind: str | None = Query(None, description="primary, specialist or general"),
     has_cve: bool | None = Query(None, description="Only items that mention a CVE"),
     since: date | None = Query(None, description="First seen on or after this date (UTC)"),
+    event_type: str | None = Query(None, description="Event type id from the taxonomy"),
+    claim_status: str | None = Query(None, description="official, reported or unverified"),
+    sector: str | None = Query(None, description="Target sector id from the taxonomy"),
+    exploited: bool | None = Query(None, description="Text reports exploitation"),
+    collapse: bool = Query(False, description="One row per story instead of one per item"),
 ) -> dict:
-    return queries.news_list(get_settings(), limit, offset, search, feed, language, kind, has_cve, since)
+    return queries.news_list(
+        get_settings(), limit, offset, search, feed, language, kind, has_cve, since,
+        event_type, claim_status, sector, exploited, collapse,
+    )
+
+
+@app.get("/api/v1/news/trend", tags=["data"])
+def news_trend(
+    by: str = Query("event_type", pattern="^(event_type|sector)$"),
+    days: int = Query(30, ge=1, le=365),
+) -> dict:
+    """Distinct stories per publication day. Labels come from keyword rules."""
+    return queries.news_trend(get_settings(), by, days)
+
+
+@app.post("/api/v1/news/relabel", tags=["pipeline"])
+def news_relabel() -> dict:
+    """Recompute event type, claim status, sectors and stories for every stored item."""
+    return {"items": runner.refresh_news_labels(get_settings(), force=True) or 0}
 
 
 @app.get("/api/v1/news/daily", tags=["data"])
