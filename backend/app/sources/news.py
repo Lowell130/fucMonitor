@@ -111,6 +111,8 @@ def _local(tag) -> str:
 def parse_feed(content: bytes) -> list[dict]:
     """Entries of an RSS 2.0, RSS 1.0 (RDF) or Atom document, as plain dicts."""
     content = content.lstrip(b"\xef\xbb\xbf \t\r\n")
+    if content[:200].lower().lstrip().startswith((b"<!doctype html", b"<html")):
+        raise ValueError("the address returned a web page, not a feed (moved or blocked?)")
     if b"<!ENTITY" in content[:4096]:
         raise ValueError("feed declares XML entities; refused")
     root = ET.fromstring(content)

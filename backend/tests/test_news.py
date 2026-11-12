@@ -75,6 +75,8 @@ def test_parsing_helpers():
     assert len(parse_feed(RSS)) == 4 and len(parse_feed(b"\xef\xbb\xbf\n" + ATOM)) == 1
     with pytest.raises(ValueError):
         parse_feed(b'<!DOCTYPE x [<!ENTITY a "b">]><rss/>')
+    with pytest.raises(ValueError, match="web page"):
+        parse_feed(b"<!doctype html>\n<html lang='it'><head></head></html>")
 
 
 def test_collects_normalises_and_filters(news):
