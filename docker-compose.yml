@@ -1,0 +1,47 @@
+# Local development environment. Everything listens on localhost only.
+#   docker compose up --build        start
+#   docker compose down              stop (data stays in ./data)
+name: fucmonitor
+
+services:
+  backend:
+    build: ./backend
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      FUC_DATA_DIR: /data
+      # Bind mounts on Windows/macOS do not deliver file events: poll for code changes.
+      WATCHFILES_FORCE_POLLING: "true"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /srv/app
+    volumes:
+      - ./data:/data
+      - ./backend/app:/srv/app
+      - ./backend/tests:/srv/tests
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    # Comes back with Docker Desktop, so the daily snapshots keep accumulating.
+    restart: unless-stopped
+
+  dashboard:
+    build: ./dashboard
+    environment:
+      FUC_API_URL: http://backend:8000
+    command: >
+      streamlit run app.py --server.address 0.0.0.0 --server.port 8501
+      --server.headless true --browser.gatherUsageStats false
+      --server.runOnSave true --server.fileWatcherType poll
+    volumes:
+      - ./dashboard:/srv
+    ports:
+      - "127.0.0.1:8501:8501"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

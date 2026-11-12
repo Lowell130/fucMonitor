@@ -1,0 +1,12 @@
+# collected data stays local
+data/*
+!data/.gitkeep
+
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.vscode/
+.idea/

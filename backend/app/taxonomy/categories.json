@@ -1,0 +1,29 @@
+{
+  "version": "0.1-draft",
+  "note": "Draft. IDs are stable and used by data and models; labels are for display only. English is the reference language.",
+  "technology_categories": [
+    {"id": "vpn_remote_access", "en": "VPN and remote access gateways", "it": "VPN e gateway di accesso remoto"},
+    {"id": "firewall_security_appliance", "en": "Firewalls and security appliances", "it": "Firewall e appliance di sicurezza"},
+    {"id": "router_network_edge", "en": "Routers and network edge devices", "it": "Router e dispositivi di bordo rete"},
+    {"id": "mail_collaboration", "en": "Mail and collaboration servers", "it": "Server di posta e collaborazione"},
+    {"id": "web_cms", "en": "Web servers, frameworks and CMS", "it": "Server web, framework e CMS"},
+    {"id": "virtualization_cloud", "en": "Virtualization and cloud infrastructure", "it": "Virtualizzazione e infrastruttura cloud"},
+    {"id": "remote_management", "en": "Remote management and IT administration tools", "it": "Gestione remota e strumenti di amministrazione IT"},
+    {"id": "database_storage", "en": "Databases, storage and backup", "it": "Database, storage e backup"},
+    {"id": "operating_system", "en": "Operating systems", "it": "Sistemi operativi"},
+    {"id": "browser_client", "en": "Browsers and client applications", "it": "Browser e applicazioni client"},
+    {"id": "identity_access", "en": "Identity and access management", "it": "Gestione di identità e accessi"},
+    {"id": "enterprise_application", "en": "Enterprise applications (ERP, file transfer, DevOps)", "it": "Applicazioni aziendali (ERP, file transfer, DevOps)"},
+    {"id": "iot_ot_building", "en": "IoT, industrial control and building automation", "it": "IoT, controllo industriale e building automation"},
+    {"id": "mobile_device", "en": "Mobile devices and firmware", "it": "Dispositivi mobili e firmware"},
+    {"id": "other", "en": "Other or not yet classified", "it": "Altro o non ancora classificato"}
+  ],
+  "event_types": [
+    {"id": "vulnerability_exploitation", "en": "Exploitation of a vulnerability", "it": "Sfruttamento di una vulnerabilità"},
+    {"id": "cyber_physical", "en": "Cyber-physical or OT disruption", "it": "Interruzione cyber-fisica o OT"},
+    {"id": "hoax_disruption", "en": "Hoax or disruption campaign", "it": "Campagna di falsi allarmi o disturbo"},
+    {"id": "ransomware", "en": "Ransomware", "it": "Ransomware"},
+    {"id": "data_breach", "en": "Data breach", "it": "Violazione di dati"},
+    {"id": "service_disruption", "en": "Denial of service", "it": "Interruzione di servizio"}
+  ]
+}
