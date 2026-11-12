@@ -259,7 +259,7 @@ def page_news() -> None:
             .encode(
                 x=alt.X("yearmonthdate(day):O", title=None, axis=alt.Axis(format="%d %b", labelAngle=0)),
                 y=alt.Y("stories:Q", title=t("news.trend_axis")),
-                color=alt.Color("label:N", title=None, legend=alt.Legend(orient="bottom", columns=3)),
+                color=alt.Color("label:N", title=None, legend=alt.Legend(orient="bottom", columns=2, labelLimit=400)),
                 tooltip=[alt.Tooltip("day:T", format="%Y-%m-%d"), "label:N", "stories:Q"],
             ),
             width="stretch",
