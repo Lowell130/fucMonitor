@@ -1,0 +1,31 @@
+{
+  "note": "News feeds. 'kind': primary = official advisories, specialist = security press and researchers, general = general press (filtered by 'keywords'). Set 'enabled' to false to pause a feed. IDs are stable: never reuse one.",
+  "general_keywords": [
+    "hacker", "cyber", "informatic", "ransomware", "malware", "phishing", "data breach", "violazione dei dati",
+    "allarme bomba", "allarmi bomba", "falso allarme", "falsi allarmi", "bomb threat", "bomb hoax", "guerra ibrida",
+    "hybrid war", "sabotag", "ddos"
+  ],
+  "feeds": [
+    {"id": "cisa_advisories", "title": "CISA Cybersecurity Advisories", "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml", "language": "en", "kind": "primary", "enabled": true},
+    {"id": "csirt_italia", "title": "CSIRT Italia", "url": "https://www.csirt.gov.it/data/indexer/rss", "language": "it", "kind": "primary", "enabled": true},
+    {"id": "ncsc_uk", "title": "NCSC UK", "url": "https://www.ncsc.gov.uk/api/1/services/v1/all-rss-feed.xml", "language": "en", "kind": "primary", "enabled": true},
+    {"id": "cert_eu", "title": "CERT-EU Security Advisories", "url": "https://cert.europa.eu/publications/security-advisories-rss", "language": "en", "kind": "primary", "enabled": true},
+    {"id": "msrc_blog", "title": "Microsoft Security Response Center", "url": "https://msrc.microsoft.com/blog/feed", "language": "en", "kind": "primary", "enabled": true},
+    {"id": "cisco_psirt", "title": "Cisco Security Advisories", "url": "https://sec.cloudapps.cisco.com/security/center/psirtrss20/CiscoSecurityAdvisory.xml", "language": "en", "kind": "primary", "enabled": true},
+    {"id": "fortinet_psirt", "title": "Fortinet PSIRT Advisories", "url": "https://filestore.fortinet.com/fortiguard/rss/ir.xml", "language": "en", "kind": "primary", "enabled": true},
+    {"id": "paloalto_psirt", "title": "Palo Alto Networks Security Advisories", "url": "https://security.paloaltonetworks.com/rss.xml", "language": "en", "kind": "primary", "enabled": true},
+    {"id": "sans_isc", "title": "SANS Internet Storm Center", "url": "https://isc.sans.edu/rssfeed_full.xml", "language": "en", "kind": "specialist", "enabled": true},
+    {"id": "bleepingcomputer", "title": "BleepingComputer", "url": "https://www.bleepingcomputer.com/feed/", "language": "en", "kind": "specialist", "enabled": true},
+    {"id": "thehackernews", "title": "The Hacker News", "url": "https://feeds.feedburner.com/TheHackersNews", "language": "en", "kind": "specialist", "enabled": true},
+    {"id": "securityweek", "title": "SecurityWeek", "url": "https://www.securityweek.com/feed/", "language": "en", "kind": "specialist", "enabled": true},
+    {"id": "therecord", "title": "The Record", "url": "https://therecord.media/feed", "language": "en", "kind": "specialist", "enabled": true},
+    {"id": "krebsonsecurity", "title": "Krebs on Security", "url": "https://krebsonsecurity.com/feed/", "language": "en", "kind": "specialist", "enabled": true},
+    {"id": "helpnetsecurity", "title": "Help Net Security", "url": "https://www.helpnetsecurity.com/feed/", "language": "en", "kind": "specialist", "enabled": true},
+    {"id": "securityaffairs", "title": "Security Affairs", "url": "https://securityaffairs.com/feed", "language": "en", "kind": "specialist", "enabled": true},
+    {"id": "redhotcyber", "title": "Red Hot Cyber", "url": "https://www.redhotcyber.com/feed/", "language": "it", "kind": "specialist", "enabled": true},
+    {"id": "cybersecurity360", "title": "Cybersecurity360", "url": "https://www.cybersecurity360.it/feed/", "language": "it", "kind": "specialist", "enabled": true},
+    {"id": "ansa_cronaca", "title": "ANSA Cronaca", "url": "https://www.ansa.it/sito/notizie/cronaca/cronaca_rss.xml", "language": "it", "kind": "general", "enabled": true},
+    {"id": "ansa_tecnologia", "title": "ANSA Tecnologia", "url": "https://www.ansa.it/sito/notizie/tecnologia/tecnologia_rss.xml", "language": "it", "kind": "general", "enabled": true},
+    {"id": "ansa_mondo", "title": "ANSA Mondo", "url": "https://www.ansa.it/sito/notizie/mondo/mondo_rss.xml", "language": "it", "kind": "general", "enabled": true}
+  ]
+}

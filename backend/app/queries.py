@@ -117,6 +117,75 @@ def epss_history(settings: Settings, cve_id: str) -> dict:
     return {"cve_id": cve_id.upper(), "items": items}
 
 
+# --- news --------------------------------------------------------------------
+def _news_files(settings: Settings) -> list[str]:
+    source = SOURCES["news"]
+    return [source.curated_path(settings, d).as_posix() for d in source.snapshot_dates(settings)]
+
+
+def _utc(value) -> str | None:
+    return value.strftime("%Y-%m-%dT%H:%M:%SZ") if value is not None else None
+
+
+def news_list(
+    settings: Settings,
+    limit: int,
+    offset: int,
+    search: str | None,
+    feed: str | None,
+    language: str | None,
+    kind: str | None,
+    has_cve: bool | None,
+    since: date | None,
+) -> dict:
+    files = _news_files(settings)
+    if not files:
+        return {"total": 0, "items": []}
+    where, params = ["true"], [files]
+    if search:
+        where.append("(title ILIKE ? OR summary ILIKE ? OR list_contains(cve_ids, upper(?)))")
+        params += [f"%{search}%", f"%{search}%", search.strip()]
+    for column, value in (("feed_id", feed), ("language", language), ("source_kind", kind)):
+        if value:
+            where.append(f"{column} = ?")
+            params.append(value)
+    if has_cve is not None:
+        where.append("len(cve_ids) > 0" if has_cve else "len(cve_ids) = 0")
+    if since:
+        where.append("snapshot_date >= ?")
+        params.append(since)
+    clause = " AND ".join(where)
+    source = "read_parquet(?, hive_partitioning = true)"
+    total = _rows(f"SELECT count(*) AS n FROM {source} WHERE {clause}", params)[0]["n"]
+    # Timestamps are stored in UTC. epoch() avoids any dependency on the session time zone.
+    items = _rows(
+        f"""SELECT item_id, feed_id, feed_title, source_kind, language, title, link, summary,
+                   make_timestamp(CAST(epoch(published_at) * 1000000 AS BIGINT)) AS published_at,
+                   make_timestamp(CAST(epoch(first_seen_at) * 1000000 AS BIGINT)) AS first_seen_at,
+                   cve_ids
+            FROM {source} WHERE {clause}
+            ORDER BY coalesce(published_at, first_seen_at) DESC, item_id LIMIT ? OFFSET ?""",
+        params + [limit, offset],
+    )
+    for item in items:
+        item["published_at"] = _utc(item["published_at"])
+        item["first_seen_at"] = _utc(item["first_seen_at"])
+    return {"total": total, "items": items}
+
+
+def news_daily(settings: Settings) -> dict:
+    files = _news_files(settings)
+    if not files:
+        return {"items": []}
+    items = _rows(
+        """SELECT snapshot_date AS seen_date, source_kind,
+                  count(*) AS items, count(*) FILTER (WHERE len(cve_ids) > 0) AS with_cve
+           FROM read_parquet(?, hive_partitioning = true) GROUP BY 1, 2 ORDER BY 1, 2""",
+        [files],
+    )
+    return {"items": items}
+
+
 # --- cross-source ------------------------------------------------------------
 def overview(settings: Settings) -> dict:
     kev_snap, epss_snap = latest(settings, "kev"), latest(settings, "epss")

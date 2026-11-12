@@ -4,7 +4,8 @@ Tendenze di sfruttamento delle vulnerabilità per categoria tecnologica, a livel
 Tendenze, non attribuzioni: nessun Paese o gruppo viene indicato come responsabile.
 
 Questa è la prima versione: l'ambiente locale in Docker, l'archiviazione giornaliera di due
-fonti reali (CISA KEV ed EPSS) e una dashboard di sviluppo per controllare la pipeline.
+fonti reali (CISA KEV ed EPSS), la raccolta oraria di notizie e avvisi di sicurezza, e una
+dashboard di sviluppo per controllare la pipeline.
 Modelli e previsioni arrivano nei passi successivi (vedi `docs/DECISIONS.md`).
 
 ## Avvio
@@ -44,9 +45,22 @@ state/fucmonitor.sqlite        storico delle esecuzioni
 Ogni riga conserva sia la data a cui i dati si riferiscono sia il momento in cui sono stati
 raccolti: serve più avanti per addestrare i modelli senza usare informazioni dal futuro.
 
+## Notizie e avvisi
+
+Ogni ora il backend legge i feed RSS elencati in `backend/app/sources/feeds.json`: avvisi
+ufficiali (CISA, CSIRT Italia, produttori), stampa di sicurezza e stampa generalista. Dalla
+stampa generalista tiene solo gli articoli che contengono una delle parole chiave in
+`general_keywords`.
+
+Di ogni elemento si salvano titolo, link, un breve sommario, lingua, tipo di fonte, i CVE
+citati, l'ora di pubblicazione e l'ora in cui è stato raccolto. Non si salvano gli articoli completi.
+
+Per aggiungere, correggere o sospendere un feed basta modificare `feeds.json`: la modifica
+vale dalla raccolta successiva. Lo stato di ogni feed è nella sezione "Notizie e avvisi" della dashboard.
+
 ## Storico EPSS
 
-I file giornalieri EPSS passati si possono recuperare, dal 2021-04-14 in poi. Dalla dashboard,
+I file giornalieri EPSS passati si possono recuperare, dal 2021-04-14 in poi (verificato il 12 novembre 2026). Dalla dashboard,
 sezione Pipeline, "Recupero dello storico EPSS", oppure:
 
 ```

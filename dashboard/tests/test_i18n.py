@@ -49,5 +49,5 @@ def test_keys_used_in_the_app_exist():
 
 def test_no_unused_keys():
     used = set(re.findall(r"""\bt\(\s*["']([\w.]+)["']""", SOURCE))
-    unused = sorted(k for k in EN if not k.startswith(("col.", "nav.")) and k not in used)
+    unused = sorted(k for k in EN if not k.startswith(("col.", "nav.", "kind.")) and k not in used)
     assert not unused, unused

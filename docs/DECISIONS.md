@@ -43,10 +43,11 @@ Fatto:
 - Archiviazione giornaliera di CISA KEV ed EPSS, recupero dello storico EPSS.
 - Dashboard di sviluppo bilingue: Panoramica, Pipeline, KEV, EPSS.
 - Bozza della tassonomia (15 categorie, 6 tipi di evento), non ancora usata dai dati.
+- Raccolta grezza oraria di notizie e avvisi da feed RSS in italiano e inglese, con estrazione dei CVE citati.
 
 Prossimi passi, in ordine:
 
-1. Raccolta grezza delle notizie (RSS di fonti primarie e specializzate).
+1. Notizie: deduplica tra feed diversi, classificazione del tipo di evento, distinzione tra fatto e ipotesi.
 2. NVD e CPE, exploit pubblici (Exploit-DB, Metasploit, Nuclei), altre etichette di sfruttamento.
 3. Mappatura prodotto → categoria con editor e coda di revisione.
 4. Dataset a livello CVE, baseline e primo modello, confronto con EPSS.

@@ -38,6 +38,8 @@ class Source:
     title: str = ""
     homepage: str = ""
     raw_filename: str = ""
+    # "daily": one snapshot per day. "interval": collected several times a day.
+    cadence: str = "daily"
 
     def ingest(self, settings: Settings, client: httpx.Client) -> IngestResult:
         raise NotImplementedError

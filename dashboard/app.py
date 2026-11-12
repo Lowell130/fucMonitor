@@ -15,7 +15,7 @@ import streamlit as st
 from i18n import LANGUAGES, translate
 
 API_URL = os.environ.get("FUC_API_URL", "http://localhost:8000").rstrip("/")
-PAGES = ["overview", "pipeline", "kev", "epss"]
+PAGES = ["overview", "pipeline", "news", "kev", "epss"]
 
 st.set_page_config(page_title="fucMonitor", page_icon="📈", layout="wide")
 
@@ -41,7 +41,7 @@ def t(key: str, **values) -> str:
     return translate(lang, key, **values)
 
 
-def table(rows: list[dict], columns: list[str], percent: tuple[str, ...] = ()) -> None:
+def table(rows: list[dict], columns: list[str], percent: tuple[str, ...] = (), links: tuple[str, ...] = ()) -> None:
     frame = pd.DataFrame(rows, columns=columns)
     for col in frame.columns:
         if frame[col].map(lambda v: isinstance(v, list)).any():
@@ -50,6 +50,9 @@ def table(rows: list[dict], columns: list[str], percent: tuple[str, ...] = ()) -
     for c in percent:
         frame[c] = frame[c] * 100
         config[c] = st.column_config.NumberColumn(t(f"col.{c}"), format="%.2f%%")
+    for c in links:
+        frame[c] = frame[c].replace("", None)
+        config[c] = st.column_config.LinkColumn(t(f"col.{c}"), display_text=t("common.open"))
     st.dataframe(frame, column_config=config, hide_index=True, width="stretch")
 
 
@@ -133,6 +136,7 @@ def page_pipeline() -> None:
     if info["scheduler_enabled"]:
         st.caption(
             t("pipeline.schedule", times=info["schedule_times_utc"], next=info["next_scheduled_run"] or "–")
+            + " " + t("pipeline.schedule_news", minutes=info["news_interval_minutes"])
         )
     else:
         st.caption(t("pipeline.schedule_off"))
@@ -179,6 +183,47 @@ def page_pipeline() -> None:
     table(
         get("/api/v1/jobs", limit=100)["items"],
         ["source", "trigger", "status", "started_at", "finished_at", "snapshot_date", "rows", "changed", "message"],
+    )
+
+
+def page_news() -> None:
+    st.header(t("nav.news"))
+    any_value = t("news.any")
+    a, b, c, d = st.columns([3, 1, 1, 1])
+    search = a.text_input(t("news.search"))
+    language = b.selectbox(t("news.language"), [any_value, "en", "it"])
+    kind = c.selectbox(
+        t("news.kind"), [any_value, "primary", "specialist", "general"],
+        format_func=lambda k: k if k == any_value else t(f"kind.{k}"),
+    )
+    d.write("")
+    only_cve = d.checkbox(t("news.only_cve"))
+    data = get(
+        "/api/v1/news", limit=500, search=search.strip(),
+        language=None if language == any_value else language,
+        kind=None if kind == any_value else kind,
+        has_cve="true" if only_cve else None,
+    )
+    feeds = get("/api/v1/news/feeds")["items"]
+    if data["total"] == 0 and not any(f["last_fetch_at"] for f in feeds):
+        st.info(t("common.no_data"))
+        return
+    st.caption(t("news.count", n=data["total"]))
+    table(
+        data["items"],
+        ["published_at", "feed_title", "language", "title", "cve_ids", "link", "summary", "first_seen_at"],
+        links=("link",),
+    )
+    st.caption(t("news.help"))
+
+    st.subheader(t("news.feeds"))
+    active = [f for f in feeds if f["enabled"]]
+    failing = [f for f in active if f["last_status"] == "failed"]
+    st.caption(t("news.feeds_summary", ok=len(active) - len(failing), n=len(active)))
+    table(
+        feeds,
+        ["title", "kind", "language", "enabled", "last_status", "last_fetch_at", "items_new", "total_items",
+         "consecutive_failures", "last_message"],
     )
 
 
@@ -233,4 +278,4 @@ def page_epss() -> None:
             )
 
 
-{"overview": page_overview, "pipeline": page_pipeline, "kev": page_kev, "epss": page_epss}[page]()
+{"overview": page_overview, "pipeline": page_pipeline, "news": page_news, "kev": page_kev, "epss": page_epss}[page]()

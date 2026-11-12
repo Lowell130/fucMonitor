@@ -24,6 +24,21 @@ CREATE TABLE IF NOT EXISTS job_runs (
     message       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_job_runs_source ON job_runs (source, id DESC);
+
+CREATE TABLE IF NOT EXISTS feed_state (
+    feed_id              TEXT PRIMARY KEY,
+    url                  TEXT,
+    last_fetch_at        TEXT,
+    last_status          TEXT,
+    last_message         TEXT,
+    last_success_at      TEXT,
+    etag                 TEXT,
+    last_modified        TEXT,
+    items_seen           INTEGER NOT NULL DEFAULT 0,
+    items_new            INTEGER NOT NULL DEFAULT 0,
+    total_items          INTEGER NOT NULL DEFAULT 0,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -115,3 +130,34 @@ def last_run(db_path: Path, source: str, status: str | None = None) -> dict | No
                 "SELECT * FROM job_runs WHERE source = ? ORDER BY id DESC LIMIT 1", (source,)
             ).fetchone()
     return _row(row) if row else None
+
+
+# --- news feeds ----------------------------------------------------------------
+def feed_states(db_path: Path) -> dict[str, dict]:
+    with connect(db_path) as conn:
+        return {r["feed_id"]: dict(r) for r in conn.execute("SELECT * FROM feed_state").fetchall()}
+
+
+def record_feed(db_path: Path, fetched_at: datetime, outcome: dict, new_items: int) -> None:
+    """Save the result of one feed fetch. A failure keeps the previous ETag and counters."""
+    ok = outcome["status"] != "failed"
+    now = iso(fetched_at)
+    with connect(db_path) as conn:
+        conn.execute("INSERT OR IGNORE INTO feed_state (feed_id) VALUES (?)", (outcome["feed_id"],))
+        if ok:
+            conn.execute(
+                """UPDATE feed_state SET url = ?, last_fetch_at = ?, last_status = ?, last_message = '',
+                          last_success_at = ?, etag = ?, last_modified = ?, items_seen = ?, items_new = ?,
+                          total_items = total_items + ?, consecutive_failures = 0
+                   WHERE feed_id = ?""",
+                (outcome["url"], now, outcome["status"], now, outcome.get("etag"),
+                 outcome.get("last_modified"), outcome["items_seen"], new_items, new_items,
+                 outcome["feed_id"]),
+            )
+        else:
+            conn.execute(
+                """UPDATE feed_state SET last_fetch_at = ?, last_status = 'failed', last_message = ?,
+                          items_seen = 0, items_new = 0, consecutive_failures = consecutive_failures + 1
+                   WHERE feed_id = ?""",
+                (now, outcome["message"], outcome["feed_id"]),
+            )

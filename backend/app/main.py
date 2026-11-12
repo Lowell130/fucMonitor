@@ -9,11 +9,13 @@ from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
 
 from . import queries, runner, state
 from .config import get_settings
 from .sources import SOURCES
+from .sources.news import load_feeds
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("fucmonitor")
@@ -36,6 +38,14 @@ def _schedule(settings) -> BackgroundScheduler | None:
             misfire_grace_time=3600,
             coalesce=True,
         )
+    scheduler.add_job(
+        runner.run_all,
+        IntervalTrigger(minutes=max(5, settings.news_interval_minutes), timezone="UTC"),
+        kwargs={"settings": settings, "cadence": "interval"},
+        id="ingest-interval",
+        misfire_grace_time=600,
+        coalesce=True,
+    )
     scheduler.start()
     return scheduler
 
@@ -47,7 +57,7 @@ async def lifespan(app: FastAPI):
     scheduler = _schedule(settings)
     if settings.scheduler_enabled and settings.run_on_startup:
         threading.Thread(
-            target=runner.run_all, args=[settings, "startup", True], daemon=True, name="startup-ingest"
+            target=runner.run_startup, args=[settings], daemon=True, name="startup-ingest"
         ).start()
     app.state.scheduler = scheduler
     yield
@@ -85,6 +95,7 @@ def _source_status(settings, name: str) -> dict:
         "name": name,
         "title": source.title,
         "homepage": source.homepage,
+        "cadence": source.cadence,
         "running": runner.is_running(name),
         "snapshots": len(dates),
         "first_snapshot_date": dates[0] if dates else None,
@@ -100,10 +111,12 @@ def _source_status(settings, name: str) -> dict:
 def list_sources() -> dict:
     settings = get_settings()
     scheduler = app.state.scheduler
-    next_run = min((j.next_run_time for j in scheduler.get_jobs()), default=None) if scheduler else None
+    daily = [j.next_run_time for j in scheduler.get_jobs() if j.id != "ingest-interval"] if scheduler else []
+    next_run = min(daily, default=None)
     return {
         "scheduler_enabled": settings.scheduler_enabled,
         "schedule_times_utc": settings.schedule_times_utc,
+        "news_interval_minutes": max(5, settings.news_interval_minutes),
         "next_scheduled_run": state.iso(next_run) if next_run else None,
         "sources": [_source_status(settings, name) for name in SOURCES],
     }
@@ -187,6 +200,40 @@ def epss_top(limit: int = Query(100, ge=1, le=2000)) -> dict:
 @app.get("/api/v1/epss/{cve_id}", tags=["data"])
 def epss_history(cve_id: str) -> dict:
     return queries.epss_history(get_settings(), cve_id)
+
+
+@app.get("/api/v1/news", tags=["data"])
+def news(
+    limit: int = Query(100, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+    search: str | None = Query(None, description="Matches title, summary or CVE"),
+    feed: str | None = Query(None, description="Feed id"),
+    language: str | None = None,
+    kind: str | None = Query(None, description="primary, specialist or general"),
+    has_cve: bool | None = Query(None, description="Only items that mention a CVE"),
+    since: date | None = Query(None, description="First seen on or after this date (UTC)"),
+) -> dict:
+    return queries.news_list(get_settings(), limit, offset, search, feed, language, kind, has_cve, since)
+
+
+@app.get("/api/v1/news/daily", tags=["data"])
+def news_daily() -> dict:
+    """Items per day we first saw them, by kind of source."""
+    return queries.news_daily(get_settings())
+
+
+@app.get("/api/v1/news/feeds", tags=["pipeline"])
+def news_feeds() -> dict:
+    settings = get_settings()
+    states = state.feed_states(settings.state_db)
+    blank = {"last_fetch_at": None, "last_status": None, "last_message": None, "last_success_at": None,
+             "items_seen": 0, "items_new": 0, "total_items": 0, "consecutive_failures": 0}
+    items = []
+    for feed in load_feeds(settings)["feeds"]:
+        saved = states.get(feed["id"], {})
+        items.append({**feed, "enabled": feed.get("enabled", True),
+                      **{k: saved.get(k, v) for k, v in blank.items()}})
+    return {"items": items}
 
 
 @app.get("/api/v1/taxonomy", tags=["data"])

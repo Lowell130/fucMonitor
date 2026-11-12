@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # Template for one historical day, used by the backfill. {date} = YYYY-MM-DD.
     epss_dated_url: str = "https://epss.empiricalsecurity.com/epss_scores-{date}.csv.gz"
 
+    # --- news ----------------------------------------------------------------
+    # Minutes between news collections. Feeds are fetched with conditional requests.
+    news_interval_minutes: int = 60
+    # Optional replacement for backend/app/sources/feeds.json.
+    news_feeds_file: Path | None = None
+
     http_timeout: float = 180.0
     user_agent: str = "fucMonitor/0.1 (local research project)"
 

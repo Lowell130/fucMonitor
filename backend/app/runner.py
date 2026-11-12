@@ -2,7 +2,7 @@
 
 import logging
 import threading
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
@@ -75,12 +75,36 @@ def run_source(
     return state.get_run(settings.state_db, run_id)
 
 
-def run_all(settings: Settings, trigger: str = "schedule", only_if_missing_today: bool = False) -> None:
+def run_all(
+    settings: Settings,
+    trigger: str = "schedule",
+    only_if_missing_today: bool = False,
+    cadence: str = "daily",
+) -> None:
     today = state.utcnow().date()
     for name, source in SOURCES.items():
+        if source.cadence != cadence:
+            continue
         if only_if_missing_today and today in source.snapshot_dates(settings):
             continue
         try:
             run_source(settings, name, trigger)
+        except AlreadyRunning:
+            log.info("%s: already running, skipped", name)
+
+
+def run_startup(settings: Settings) -> None:
+    """Catch up after a start: today's daily snapshots if missing, and news unless just collected."""
+    run_all(settings, "startup", only_if_missing_today=True)
+    for name, source in SOURCES.items():
+        if source.cadence != "interval":
+            continue
+        last = state.last_run(settings.state_db, name, "success")
+        if last and last["finished_at"]:
+            finished = datetime.strptime(last["finished_at"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+            if state.utcnow() - finished < timedelta(minutes=15):
+                continue
+        try:
+            run_source(settings, name, "startup")
         except AlreadyRunning:
             log.info("%s: already running, skipped", name)
