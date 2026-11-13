@@ -273,6 +273,11 @@ def test_an_unfinished_download_is_picked_up_again_at_startup(nvd, monkeypatch):
     assert source.snapshot_dates(settings) == [state.utcnow().date()]
     assert source.needs_run(settings) is True
 
+    # Even with the resume marker cleared, an unfinished catalogue is still due:
+    # only a download that ran to the end sets the watermark.
+    state.set_value(settings.state_db, "nvd.resume_index", "0")
+    assert source.needs_run(settings) is True
+
     box["pages"] = [payload([record("CVE-2026-0003"), record("CVE-2026-0004")], 6, start=2),
                     payload([record("CVE-2026-0005"), record("CVE-2026-0006")], 6, start=4)]
     assert runner.run_source(settings, "nvd", client=client)["status"] == "success"

@@ -179,9 +179,9 @@ class NvdSource(Source):
     homepage = "https://nvd.nist.gov/developers/vulnerabilities"
 
     def needs_run(self, settings: Settings) -> bool:
-        """Today's partition can exist while the catalogue is still half downloaded, so an
-        unfinished full download counts as due even when files for today are present."""
-        if int(state.get_value(settings.state_db, RESUME) or 0):
+        """The watermark is set only when a download has run to the end, so its absence
+        means the catalogue was never completed, whatever files today's partition holds."""
+        if not state.get_value(settings.state_db, WATERMARK):
             return True
         return super().needs_run(settings)
 
