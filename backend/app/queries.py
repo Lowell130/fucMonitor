@@ -10,6 +10,7 @@ import duckdb
 
 from .config import Settings
 from .enrich import news as news_enrich
+from .taxonomy import mapping
 from .sources import SOURCES
 
 
@@ -385,7 +386,7 @@ def cve_profile(settings: Settings, cve_id: str) -> dict:
     """Everything this system holds about one CVE. Each source is reported separately."""
     cve_id = cve_id.strip().upper()
     out: dict = {"cve_id": cve_id, "nvd": None, "kev": None, "epss": None,
-                 "exploits": [], "exploit_providers": [], "news": []}
+                 "exploits": [], "exploit_providers": [], "news": [], "categories": []}
 
     files = _nvd_files(settings)
     if files:
@@ -399,6 +400,17 @@ def cve_profile(settings: Settings, cve_id: str) -> dict:
             for column in ("published", "last_modified", "retrieved_at"):
                 found[0][column] = _utc(found[0][column])
             out["nvd"] = found[0]
+
+    products_table = _products_table(settings)
+    if out["nvd"] and products_table and out["nvd"]["products"]:
+        out["categories"] = [
+            r["category"]
+            for r in _rows(
+                "SELECT DISTINCT category FROM read_parquet(?) WHERE product IN ? "
+                "AND category <> 'unmapped' ORDER BY category",
+                [products_table, out["nvd"]["products"]],
+            )
+        ]
 
     kev_snapshot = latest(settings, "kev")
     if kev_snapshot:
@@ -435,3 +447,126 @@ def cve_profile(settings: Settings, cve_id: str) -> dict:
     if news_files:
         out["news"] = news_list(settings, 20, 0, search=cve_id)["items"]
     return out
+
+
+# --- technology categories ----------------------------------------------------
+def _products_table(settings: Settings) -> str | None:
+    path = mapping.derived_path(settings)
+    return path.as_posix() if path.exists() else None
+
+
+def _category_pairs(settings: Settings) -> tuple[str, list] | None:
+    """SQL for one row per (CVE, category). A CVE affecting products in two categories
+    appears in both, so category counts add up to more than the number of CVEs."""
+    files = _nvd_files(settings)
+    products = _products_table(settings)
+    if not files or not products:
+        return None
+    sql = f"""(SELECT DISTINCT n.cve_id, p.category, CAST(n.published AS DATE) AS published_date,
+                      n.cisa_exploit_add IS NOT NULL AS in_kev
+               FROM ({nvd_latest()}) n, unnest(n.products) AS u(product)
+               JOIN read_parquet(?) p ON p.product = u.product)"""
+    return sql, [files, products]
+
+
+def categories_coverage(settings: Settings) -> dict:
+    """How much of the catalogue carries a category, by products and by CVEs.
+    The CVE figures are what matter: a handful of busy products cover most of them."""
+    products = _products_table(settings)
+    empty = {"products": 0, "products_mapped": 0, "products_manual": 0, "cves": 0, "cves_mapped": 0,
+             "kev_cves": 0, "kev_cves_mapped": 0, "recent_cves": 0, "recent_cves_mapped": 0,
+             "rules_version": None}
+    if not products:
+        return empty
+    row = _rows(
+        """SELECT count(*) AS products,
+                  count(*) FILTER (WHERE category <> 'unmapped') AS products_mapped,
+                  count(*) FILTER (WHERE assigned_by = 'manual') AS products_manual,
+                  max(rules_version) AS rules_version
+           FROM read_parquet(?)""",
+        [products],
+    )[0]
+    pairs = _category_pairs(settings)
+    files = _nvd_files(settings)
+    if pairs and files:
+        counts = _rows(
+            f"""WITH mapped AS (
+                    SELECT DISTINCT cve_id, published_date, in_kev FROM {pairs[0]} WHERE category <> 'unmapped'
+                ), all_cves AS (
+                    SELECT cve_id, CAST(published AS DATE) AS published_date,
+                           cisa_exploit_add IS NOT NULL AS in_kev
+                    FROM ({nvd_latest()}) WHERE len(products) > 0
+                )
+                SELECT (SELECT count(*) FROM all_cves) AS cves,
+                       (SELECT count(*) FROM mapped) AS cves_mapped,
+                       (SELECT count(*) FROM all_cves WHERE in_kev) AS kev_cves,
+                       (SELECT count(*) FROM mapped WHERE in_kev) AS kev_cves_mapped,
+                       (SELECT count(*) FROM all_cves
+                         WHERE published_date >= current_date - INTERVAL 730 DAY) AS recent_cves,
+                       (SELECT count(*) FROM mapped
+                         WHERE published_date >= current_date - INTERVAL 730 DAY) AS recent_cves_mapped""",
+            pairs[1] + files,
+        )[0]
+        row.update(counts)
+    return {**empty, **row}
+
+
+def categories_summary(settings: Settings, since_year: int | None = None) -> dict:
+    """Per category: how many CVEs, how many are known exploited, how many are recent."""
+    pairs = _category_pairs(settings)
+    if not pairs:
+        return {"items": []}
+    sql, params = pairs
+    where = "WHERE category <> 'unmapped'"
+    if since_year:
+        where += " AND year(published_date) >= ?"
+        params = params + [since_year]
+    items = _rows(
+        f"""SELECT category,
+                   count(*) AS cves,
+                   count(*) FILTER (WHERE in_kev) AS kev_cves,
+                   count(*) FILTER (WHERE published_date >= current_date - INTERVAL 730 DAY) AS recent_cves,
+                   max(published_date) AS last_published
+            FROM {sql} {where}
+            GROUP BY 1 ORDER BY cves DESC""",
+        params,
+    )
+    for item in items:
+        item["kev_share"] = round(item["kev_cves"] / item["cves"], 5) if item["cves"] else None
+    return {"items": items}
+
+
+def category_products(
+    settings: Settings,
+    category: str | None = None,
+    assigned_by: str | None = None,
+    search: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict:
+    """Products with their category. Ordered by how much a wrong answer would cost:
+    products behind known-exploited CVEs first, then by how many CVEs they carry."""
+    products = _products_table(settings)
+    if not products:
+        return {"total": 0, "items": []}
+    where, params = ["true"], [products]
+    if category:
+        where.append("category = ?")
+        params.append(category)
+    if assigned_by:
+        where.append("assigned_by = ?")
+        params.append(assigned_by)
+    if search:
+        where.append("product ILIKE ?")
+        params.append(f"%{search}%")
+    clause = " AND ".join(where)
+    total = _rows(f"SELECT count(*) AS n FROM read_parquet(?) WHERE {clause}", params)[0]["n"]
+    items = _rows(
+        f"""SELECT product, vendor, category, assigned_by, rule_id, cve_count, kev_count,
+                   exploit_count, recent_cve_count, last_published
+            FROM read_parquet(?) WHERE {clause}
+            ORDER BY kev_count DESC, exploit_count DESC, recent_cve_count DESC, cve_count DESC, product
+            LIMIT ? OFFSET ?""",
+        params + [limit, offset],
+    )
+    return {"total": total, "items": items}

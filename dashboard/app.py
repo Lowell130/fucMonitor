@@ -15,13 +15,13 @@ import streamlit as st
 from i18n import LANGUAGES, translate
 
 API_URL = os.environ.get("FUC_API_URL", "http://localhost:8000").rstrip("/")
-PAGES = ["overview", "pipeline", "news", "vulns", "kev", "epss"]
+PAGES = ["overview", "pipeline", "news", "vulns", "categories", "kev", "epss"]
 
 st.set_page_config(page_title="fucMonitor", page_icon="📈", layout="wide")
 
 
-def api(method: str, path: str, **params):
-    response = httpx.request(method, f"{API_URL}{path}", params=params or None, timeout=60)
+def api(method: str, path: str, json: dict | None = None, **params):
+    response = httpx.request(method, f"{API_URL}{path}", params=params or None, json=json, timeout=60)
     response.raise_for_status()
     return response.json()
 
@@ -372,6 +372,81 @@ def page_vulns() -> None:
         table(profile["news"], ["published_at", "feed_title", "title", "link"], links=("link",))
 
 
+def page_categories() -> None:
+    st.header(t("nav.categories"))
+    names = labels("technology_categories")
+    coverage = get("/api/v1/categories/coverage")
+    if not coverage["products"]:
+        st.info(t("categories.no_data"))
+        return
+
+    def share(part: int, whole: int) -> str:
+        return "–" if not whole else f"{part / whole:.0%}"
+
+    cols = st.columns(4)
+    cols[0].metric(t("categories.products"), f"{number(coverage['products_mapped'])} / {number(coverage['products'])}")
+    cols[1].metric(t("categories.cves"), share(coverage["cves_mapped"], coverage["cves"]))
+    cols[2].metric(t("categories.kev"), share(coverage["kev_cves_mapped"], coverage["kev_cves"]))
+    cols[3].metric(t("categories.manual"), number(coverage["products_manual"]))
+    st.caption(t("categories.coverage_help"))
+
+    st.subheader(t("categories.summary"))
+    a, _ = st.columns([1, 3])
+    since = a.select_slider(t("vulns.vendors_since"), [1999, 2018, 2024, 2026], value=2018)
+    rows = get("/api/v1/categories/summary", since_year=since)["items"]
+    if rows:
+        frame = pd.DataFrame(rows)
+        frame["label"] = frame["category"].map(lambda k: names.get(k, k))
+        st.altair_chart(
+            alt.Chart(frame).mark_bar().encode(
+                x=alt.X("cves:Q", title=t("categories.axis")),
+                y=alt.Y("label:N", title=None, sort="-x"),
+                tooltip=[alt.Tooltip("label:N", title=""), "cves:Q", "kev_cves:Q"],
+            ),
+            width="stretch",
+        )
+        table([{**r, "category": names.get(r["category"], r["category"])} for r in rows],
+              ["category", "cves", "kev_cves", "kev_share", "recent_cves", "last_published"],
+              percent=("kev_share",))
+        st.caption(t("categories.summary_help"))
+
+    st.subheader(t("categories.queue"))
+    st.caption(t("categories.queue_help"))
+    queue = get("/api/v1/categories/products", assigned_by="unmapped", limit=50)
+    if queue["total"]:
+        st.caption(t("categories.queue_count", n=queue["total"]))
+        table(queue["items"],
+              ["product", "cve_count", "kev_count", "exploit_count", "recent_cve_count", "last_published"])
+    else:
+        st.success(t("categories.queue_empty"))
+
+    st.subheader(t("categories.assign"))
+    search = st.text_input(t("categories.search"), placeholder="fortinet")
+    found = get("/api/v1/categories/products", search=search.strip(), limit=25) if search.strip() else queue
+    options = [r["product"] for r in found["items"]]
+    if not options:
+        st.info(t("categories.none_found"))
+        return
+    a, b, c = st.columns([2, 2, 1])
+    product = a.selectbox(t("categories.product"), options)
+    current = next(r for r in found["items"] if r["product"] == product)
+    category = b.selectbox(
+        t("categories.category"), list(names),
+        index=list(names).index(current["category"]) if current["category"] in names else 0,
+        format_func=lambda k: names.get(k, k),
+    )
+    c.write("")
+    if c.button(t("categories.save")):
+        api("PUT", f"/api/v1/categories/products/{product}", json={"category": category})
+        st.toast(t("categories.saved", product=product))
+        st.rerun()
+    st.caption(t("categories.assign_help", by=t(f"assigned.{current['assigned_by']}")))
+    if current["assigned_by"] == "manual" and st.button(t("categories.clear")):
+        api("DELETE", f"/api/v1/categories/products/{product}")
+        st.toast(t("categories.cleared", product=product))
+        st.rerun()
+
+
 def page_kev() -> None:
     st.header(t("nav.kev"))
     search = st.text_input(t("kev.search"))
@@ -423,5 +498,5 @@ def page_epss() -> None:
             )
 
 
-{"overview": page_overview, "pipeline": page_pipeline, "news": page_news,
- "vulns": page_vulns, "kev": page_kev, "epss": page_epss}[page]()
+{"overview": page_overview, "pipeline": page_pipeline, "news": page_news, "vulns": page_vulns,
+ "categories": page_categories, "kev": page_kev, "epss": page_epss}[page]()

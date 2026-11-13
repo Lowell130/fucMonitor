@@ -70,6 +70,21 @@ all'uso, un template **Nuclei** di solito si limita a rilevare, una voce **Explo
 una prova di concetto. Ogni coppia exploit-CVE viene archiviata una sola volta, il giorno in cui
 viene vista per la prima volta.
 
+## Categorie tecnologiche
+
+È il collegamento fra le vulnerabilità e l'obiettivo del progetto: le previsioni parlano di
+categorie (VPN, firewall, CMS, virtualizzazione...), non di singoli prodotti.
+
+La categoria viene assegnata al **prodotto**, non alla CVE: i prodotti distinti sono molti meno
+e una decisione presa una volta vale per tutte le sue vulnerabilità. Tre livelli, in ordine di
+autorità: assegnazione fatta a mano, regola a parole chiave (`backend/app/taxonomy/rules.json`),
+oppure nessuna delle due e il prodotto resta "senza categoria".
+
+Le assegnazioni manuali vincono sempre sulle regole e sopravvivono a una loro modifica. La
+sezione "Categorie tecnologiche" della dashboard mostra la copertura e una coda di revisione:
+i prodotti che nessuna regola ha riconosciuto, ordinati per quanto pesano (prima quelli dietro
+a vulnerabilità già sfruttate). Sistemare i primi cambia i numeri più di tutti gli altri insieme.
+
 ## Notizie e avvisi
 
 Ogni ora il backend legge i feed RSS elencati in `backend/app/sources/feeds.json`: avvisi

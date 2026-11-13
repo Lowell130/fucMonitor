@@ -9,12 +9,14 @@ import httpx
 from . import state
 from .config import Settings
 from .enrich import news as news_enrich
+from .taxonomy import mapping as category_mapping
 from .sources import SOURCES, IngestResult
 
 log = logging.getLogger("fucmonitor.runner")
 
 _locks = {name: threading.Lock() for name in SOURCES}
 _labels_lock = threading.Lock()
+_categories_lock = threading.Lock()
 
 
 class AlreadyRunning(RuntimeError):
@@ -70,6 +72,8 @@ def run_source(
         log.info("%s: %s, %s rows, snapshot %s", name, result.message, result.rows, result.snapshot_date)
         if name == "news":
             refresh_news_labels(settings)
+        if name in ("nvd", "kev", "exploits"):
+            refresh_categories(settings)
     except Exception as exc:  # noqa: BLE001 - every failure must end up in the job history
         log.exception("%s: ingestion failed", name)
         state.finish_run(
@@ -80,6 +84,20 @@ def run_source(
             client.close()
         lock.release()
     return state.get_run(settings.state_db, run_id)
+
+
+def refresh_categories(settings: Settings, force: bool = False) -> int | None:
+    """Rebuild the product-to-category table when the rules, the catalogue or a hand-made
+    assignment has moved on. Derived data, so a failure here never fails a collection."""
+    with _categories_lock:
+        try:
+            if force or not category_mapping.is_current(settings):
+                count = category_mapping.rebuild(settings)
+                log.info("categories rebuilt for %s products", count)
+                return count
+        except Exception:  # noqa: BLE001
+            log.exception("categories: rebuild failed")
+    return None
 
 
 def refresh_news_labels(settings: Settings, force: bool = False) -> int | None:
@@ -119,6 +137,7 @@ def run_all(
 def run_startup(settings: Settings) -> None:
     """Catch up after a start: today's daily snapshots if missing, and news unless just collected."""
     refresh_news_labels(settings)
+    refresh_categories(settings)
     run_all(settings, "startup", only_if_missing_today=True)
     for name, source in SOURCES.items():
         if source.cadence != "interval":

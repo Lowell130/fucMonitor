@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS feed_state (
     consecutive_failures INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS product_category (
+    product    TEXT PRIMARY KEY,
+    category   TEXT NOT NULL,
+    note       TEXT,
+    decided_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kv (
     key        TEXT PRIMARY KEY,
     value      TEXT,
@@ -191,3 +198,36 @@ def set_run_message(db_path: Path, run_id: int, message: str) -> None:
         conn.execute(
             "UPDATE job_runs SET message = ? WHERE id = ? AND status = 'running'", (message[:1000], run_id)
         )
+
+
+# --- hand-made product assignments ---------------------------------------------
+def product_categories(db_path: Path) -> dict[str, str]:
+    with connect(db_path) as conn:
+        return {r["product"]: r["category"] for r in conn.execute("SELECT * FROM product_category")}
+
+
+def product_decisions(db_path: Path) -> list[dict]:
+    with connect(db_path) as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT * FROM product_category ORDER BY decided_at DESC, product")]
+
+
+def count_product_categories(db_path: Path) -> int:
+    with connect(db_path) as conn:
+        return conn.execute("SELECT count(*) AS n FROM product_category").fetchone()["n"]
+
+
+def set_product_category(db_path: Path, product: str, category: str, note: str | None = None) -> None:
+    with connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO product_category (product, category, note, decided_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(product) DO UPDATE SET category = excluded.category, note = excluded.note, "
+            "decided_at = excluded.decided_at",
+            (product, category, note, iso(utcnow())),
+        )
+
+
+def clear_product_category(db_path: Path, product: str) -> bool:
+    """Drop a hand-made assignment so the product falls back to the rules."""
+    with connect(db_path) as conn:
+        return conn.execute("DELETE FROM product_category WHERE product = ?", (product,)).rowcount > 0

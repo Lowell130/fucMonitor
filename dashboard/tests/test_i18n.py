@@ -50,5 +50,5 @@ def test_keys_used_in_the_app_exist():
 def test_no_unused_keys():
     used = set(re.findall(r"""\bt\(\s*["']([\w.]+)["']""", SOURCE))
     used |= {"news.by_event_type", "news.by_sector"}  # built from the radio value
-    unused = sorted(k for k in EN if not k.startswith(("col.", "nav.", "kind.")) and k not in used)
+    unused = sorted(k for k in EN if not k.startswith(("col.", "nav.", "kind.", "assigned.")) and k not in used)
     assert not unused, unused

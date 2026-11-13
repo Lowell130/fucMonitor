@@ -25,6 +25,9 @@ Local, zero-cost app that forecasts which technology categories will be exploite
   Watermark in the `kv` table drives incremental updates.
 - `backend/app/sources/exploits.py`: Metasploit, Nuclei, Exploit-DB. One row per exploit-CVE pair,
   stored the day it is first seen. Providers stay separate: they are different kinds of evidence.
+- `backend/app/taxonomy/mapping.py` + `rules.json`: product (`vendor:product`) to technology
+  category. Manual assignments live in the `product_category` table and always beat the rules.
+  Derived table rebuilt whenever rules, catalogue or a manual decision changes.
 - `backend/app/enrich/news.py` + `rules.json`: derived news labels (event type, exploitation signal,
   claim status, sectors, stories). Raw items are never changed; `derived/` can be deleted and rebuilt.
   Bump `version` in `rules.json` on every rule change.
@@ -39,6 +42,9 @@ Local, zero-cost app that forecasts which technology categories will be exploite
 - Language: English is the reference for code, comments, identifiers, exported data and UI text.
   Italian derives from it. No UI string in code: add the key to `dashboard/locales/en.json`, then `it.json`.
 - Data and models use category IDs (`router_network_edge`), never labels.
+- Categories are assigned to products, never to CVEs directly. A CVE inherits the categories of
+  the products it affects and can belong to several, so category counts overlap by design.
+- DuckDB refuses bound parameters in CREATE VIEW: inline file lists with `mapping._sql_list`.
 - Store timestamps in UTC; convert only for display.
 - Never return a DuckDB `TIMESTAMP WITH TIME ZONE` to Python: it needs `pytz`, which is not a
   dependency. Wrap the column in `queries._ts()` instead.

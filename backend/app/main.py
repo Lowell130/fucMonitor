@@ -16,6 +16,7 @@ from . import queries, runner, state
 from .config import get_settings
 from .sources import SOURCES
 from .sources.news import load_feeds
+from .taxonomy import mapping
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("fucmonitor")
@@ -282,6 +283,55 @@ def exploits_overview() -> dict:
 def cve_profile(cve_id: str = Path(pattern=r"^(?i)CVE-\d{4}-\d{4,7}$")) -> dict:
     """Everything stored about one CVE: NVD record, KEV, EPSS, public exploits, mentions."""
     return queries.cve_profile(get_settings(), cve_id)
+
+
+@app.get("/api/v1/categories/coverage", tags=["categories"])
+def categories_coverage() -> dict:
+    return queries.categories_coverage(get_settings())
+
+
+@app.get("/api/v1/categories/summary", tags=["categories"])
+def categories_summary(since_year: int | None = Query(None, ge=1999, le=2100)) -> dict:
+    """CVEs per technology category. A CVE touching two categories counts in both."""
+    return queries.categories_summary(get_settings(), since_year)
+
+
+@app.get("/api/v1/categories/products", tags=["categories"])
+def category_products(
+    category: str | None = Query(None, description="Category id, or 'unmapped'"),
+    assigned_by: str | None = Query(None, pattern="^(rule|manual|unmapped)$"),
+    search: str | None = None,
+    limit: int = Query(100, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    return queries.category_products(get_settings(), category, assigned_by, search, limit, offset)
+
+
+@app.put("/api/v1/categories/products/{product:path}", tags=["categories"])
+def set_product_category(product: str, body: dict) -> dict:
+    """Assign a category by hand. Hand-made assignments always beat the rules."""
+    settings = get_settings()
+    category = (body or {}).get("category")
+    if category not in mapping.category_ids():
+        raise HTTPException(422, f"Unknown category '{category}'")
+    state.set_product_category(settings.state_db, product.strip().lower(), category, (body or {}).get("note"))
+    runner.refresh_categories(settings, force=True)
+    return {"product": product, "category": category}
+
+
+@app.delete("/api/v1/categories/products/{product:path}", tags=["categories"])
+def clear_product_category(product: str) -> dict:
+    """Drop a hand-made assignment; the product goes back to whatever the rules say."""
+    settings = get_settings()
+    removed = state.clear_product_category(settings.state_db, product.strip().lower())
+    if removed:
+        runner.refresh_categories(settings, force=True)
+    return {"product": product, "removed": removed}
+
+
+@app.post("/api/v1/categories/rebuild", tags=["categories"])
+def rebuild_categories() -> dict:
+    return {"products": runner.refresh_categories(get_settings(), force=True) or 0}
 
 
 @app.get("/api/v1/taxonomy", tags=["data"])

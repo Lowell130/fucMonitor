@@ -53,6 +53,9 @@ Fatto:
 - Exploit pubblici da Metasploit, Nuclei ed Exploit-DB, tenuti separati per fonte.
 - Profilo unificato di un CVE: NVD, KEV, EPSS, exploit pubblici e citazioni nelle notizie.
 
+- Mappatura prodotto → categoria tecnologica: regole a parole chiave, assegnazioni manuali
+  prioritarie e coda di revisione ordinata per impatto.
+
 Limiti noti delle notizie:
 
 - Le regole sono semplici e sbagliano su una parte degli elementi. Ogni etichetta riporta la versione delle regole.
@@ -62,7 +65,7 @@ Limiti noti delle notizie:
 Prossimi passi, in ordine:
 
 1. Notizie: raggruppamento multilingue e verifica a campione della qualità delle regole.
-2. Mappatura prodotto → categoria tecnologica, con editor e coda di revisione.
+2. Revisione manuale della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
 3. Dataset a livello CVE con feature point-in-time, baseline e primo modello, confronto con EPSS.
 4. Aggregazione per categoria e pagina Previsioni.
 5. Segnali live, poi frontend React.

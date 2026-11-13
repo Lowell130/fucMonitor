@@ -18,6 +18,8 @@ TAXONOMY = {
                     {"id": "vulnerability_exploitation", "en": "Exploitation", "it": "Sfruttamento"},
                     {"id": "vulnerability_disclosure", "en": "Disclosure", "it": "Divulgazione"}],
     "target_sectors": [{"id": "education", "en": "Schools", "it": "Scuole"}],
+    "technology_categories": [{"id": "web_cms", "en": "Web and CMS", "it": "Web e CMS"},
+                              {"id": "firewall_security_appliance", "en": "Firewalls", "it": "Firewall"}],
     "claim_statuses": [{"id": "reported", "en": "Reported", "it": "Riportato"}],
 }
 
@@ -70,6 +72,22 @@ FULL = {
                              "by_year": [{"year": 2025, "cves": 40000}, {"year": 2026, "cves": 38000}],
                              "by_severity": [{"severity": "HIGH", "cves": 100}, {"severity": "CRITICAL", "cves": 50}]},
     "/api/v1/nvd/vendors": {"items": [{"vendor": "acme", "cves": 120, "products": 14}]},
+    "/api/v1/categories/coverage": {"products": 9000, "products_mapped": 6000, "products_manual": 12,
+                                    "cves": 250000, "cves_mapped": 190000, "kev_cves": 1700,
+                                    "kev_cves_mapped": 1600, "recent_cves": 80000,
+                                    "recent_cves_mapped": 60000, "rules_version": "2026.11.13-1+12"},
+    "/api/v1/categories/summary": {"items": [
+        {"category": "web_cms", "cves": 50000, "kev_cves": 300, "kev_share": 0.006,
+         "recent_cves": 20000, "last_published": "2026-11-12"},
+        {"category": "firewall_security_appliance", "cves": 4000, "kev_cves": 200, "kev_share": 0.05,
+         "recent_cves": 1200, "last_published": "2026-11-11"}]},
+    "/api/v1/categories/products": {"total": 3000, "items": [
+        {"product": "acme:gizmotron", "vendor": "acme", "category": "unmapped", "assigned_by": "unmapped",
+         "rule_id": "", "cve_count": 42, "kev_count": 3, "exploit_count": 2, "recent_cve_count": 10,
+         "last_published": "2026-10-01"},
+        {"product": "other:thing", "vendor": "other", "category": "web_cms", "assigned_by": "manual",
+         "rule_id": "", "cve_count": 7, "kev_count": 0, "exploit_count": 0, "recent_cve_count": 1,
+         "last_published": "2026-09-01"}]},
     "/api/v1/exploits/overview": {"cves": 9000, "providers": [
         {"provider": "metasploit", "entries": 3500, "cves": 3400, "last_seen": "2026-11-13T06:20:00Z"}]},
     "/api/v1/epss/top": {"snapshot_date": "2026-11-12", "items": [{"cve_id": "CVE-2024-0001", "epss": 0.94, "percentile": 0.999, "in_kev": True}]},
@@ -88,6 +106,11 @@ EMPTY = {
     "/api/v1/nvd/overview": {"total": None, "with_cvss": None, "with_products": None,
                              "with_exploit_reference": None, "retrieved_at": None, "by_year": [], "by_severity": []},
     "/api/v1/nvd/vendors": {"items": []},
+    "/api/v1/categories/coverage": {"products": 0, "products_mapped": 0, "products_manual": 0, "cves": 0,
+                                    "cves_mapped": 0, "kev_cves": 0, "kev_cves_mapped": 0,
+                                    "recent_cves": 0, "recent_cves_mapped": 0, "rules_version": None},
+    "/api/v1/categories/summary": {"items": []},
+    "/api/v1/categories/products": {"total": 0, "items": []},
     "/api/v1/exploits/overview": {"cves": 0, "providers": []},
     "/api/v1/news": {"total": 0, "items": []},
     "/api/v1/news/trend": {"by": "event_type", "days": 14, "items": []},
@@ -101,9 +124,9 @@ EMPTY = {
 
 @pytest.mark.parametrize("responses", [FULL, EMPTY], ids=["full", "empty"])
 @pytest.mark.parametrize("lang", ["en", "it"])
-@pytest.mark.parametrize("page", ["overview", "pipeline", "news", "vulns", "kev", "epss"])
+@pytest.mark.parametrize("page", ["overview", "pipeline", "news", "vulns", "categories", "kev", "epss"])
 def test_page_renders(monkeypatch, responses, lang, page):
-    def fake(method, url, params=None, timeout=None):
+    def fake(method, url, params=None, json=None, timeout=None):
         path = httpx.URL(url).path
         return httpx.Response(200, json=responses[path], request=httpx.Request(method, url))
 
@@ -114,7 +137,7 @@ def test_page_renders(monkeypatch, responses, lang, page):
     at.sidebar.radio[0].set_value(page).run()
     assert not at.exception, at.exception
     visible = " ".join(str(e.value) for e in [*at.header, *at.subheader, *at.caption, *at.info])
-    for prefix in ("nav.", "overview.", "pipeline.", "common.", "epss.", "kev.", "app.", "news.", "kind.", "vulns."):
+    for prefix in ("nav.", "overview.", "pipeline.", "common.", "epss.", "kev.", "app.", "news.", "kind.", "vulns.", "categories.", "assigned."):
         assert prefix not in visible, visible
 
 

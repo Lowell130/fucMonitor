@@ -1,0 +1,103 @@
+{
+  "version": "2026.11.13-1",
+  "note": "Product to technology-category rules. Each pattern is a regular expression matched against 'vendor:product' as NVD writes it (lower case, underscores). Rules are tried in order and the first match wins, so put the specific ones first. Hand-made assignments always win over these. Bump 'version' on every change: the derived table is rebuilt from scratch when it changes.",
+  "rules": [
+    {"id": "mobile_os", "category": "mobile_device", "patterns": [
+      "^apple:(iphone_os|ipad_os|ipados|watchos|tvos)$", "^google:android$", "^samsung:",
+      "^qualcomm:", "^mediatek:", "^unisoc:", "^huawei:(emui|harmonyos)", "^xiaomi:", "^motorola:",
+      ":(baseband|modem_firmware)$"]},
+
+    {"id": "network_os", "category": "router_network_edge", "patterns": [
+      "^cisco:(ios|ios_xe|ios_xr|nx-os|nx_os|catalyst|isr_|asr_|meraki)", "^juniper:(junos|junos_os)",
+      "^mikrotik:routeros", "^tp-link:", "^d-link:", "^netgear:", "^zyxel:", "^asus:(rt-|dsl-|tuf_|ax)",
+      "^huawei:(ar|ne|s[0-9]|usg)", "^arista:eos", "^ubiquiti:", "^draytek:", "^technicolor:",
+      ":(router|switch|access_point|wireless_router|dsl_modem|cable_modem|gpon|olt|firmware_router)"]},
+
+    {"id": "vpn_gateway", "category": "vpn_remote_access", "patterns": [
+      "vpn", "anyconnect", "globalprotect", "^ivanti:connect_secure", "^ivanti:policy_secure",
+      "^pulsesecure:", "^pulse_secure", "^citrix:(netscaler_gateway|gateway)", "openvpn", "wireguard",
+      "^sonicwall:(sma|secure_mobile_access)", "^f5:big-ip_access_policy", "remote_access"]},
+
+    {"id": "firewall", "category": "firewall_security_appliance", "patterns": [
+      "firewall", "^fortinet:(fortios|fortigate|fortiproxy|fortiweb|fortiadc|fortimanager|fortianalyzer)",
+      "^paloaltonetworks:(pan-os|panorama|prisma|cortex)", "^checkpoint:", "^check_point:",
+      "^cisco:(asa|adaptive_security_appliance|firepower|secure_firewall)", "^sophos:",
+      "^sonicwall:", "^watchguard:", "^pfsense", "^netgate:", "^trellix:", "^mcafee:(web_gateway|epolicy)",
+      "^barracuda:", "^f5:big-ip", "^imperva:", "intrusion_(detection|prevention)", "web_application_firewall",
+      "^trendmicro:(apex|deep_security|interscan)", "^eset:", "^kaspersky:", "^bitdefender:", "^symantec:",
+      "^crowdstrike:", "^sentinelone:", "antivirus", "endpoint_(protection|security)"]},
+
+    {"id": "mail", "category": "mail_collaboration", "patterns": [
+      "^microsoft:exchange", "zimbra", "^postfix", "^exim", "dovecot", "sendmail", "roundcube",
+      "^horde:", "mdaemon", "mailenable", "^proofpoint:", "^mimecast:", "mail_server", "^icewarp:",
+      "^atlassian:(confluence|jira_service)", "^microsoft:sharepoint", "^mattermost:", "^rocket:rocket.chat",
+      "^zoom:", "^microsoft:teams", "^slack:", "webmail", "^openxchange", "^open-xchange"]},
+
+    {"id": "web_platform", "category": "web_cms", "patterns": [
+      "^wordpress", ":wordpress", "wp_", "_plugin$", "drupal", "joomla", "typo3", "magento", "prestashop",
+      "opencart", "woocommerce", "^apache:(http_server|tomcat|struts|httpd)", "^nginx", "^microsoft:iis",
+      "^internet_information", "^php", "^laravel", "^symfony", "^django", "^rubyonrails", "^ruby:",
+      "^drupal:", "^joomla:", "^moodle", "^phpmyadmin", "^mediawiki", "^ghost:", "^craftcms", "^silverstripe",
+      "^liferay", "^adobe:(experience_manager|coldfusion)", "^sitecore", "^umbraco", "^dotnetnuke",
+      "content_management"]},
+
+    {"id": "virtualization", "category": "virtualization_cloud", "patterns": [
+      "^vmware:", "^broadcom:(vmware|vcenter|esxi)", "esxi", "vcenter", "vsphere", "hyper-v", "^citrix:(xen|hypervisor)",
+      "^xen:", "proxmox", "^redhat:(openshift|openstack|virtualization)", "^openstack", "kubernetes",
+      "^docker", "containerd", "^kubernetes:", "^rancher", "^nutanix:", "^oracle:(vm_virtualbox|virtualbox)",
+      "^qemu", "^libvirt", "^amazon:", "^microsoft:azure", "^google:(cloud|kubernetes)", "hypervisor"]},
+
+    {"id": "remote_mgmt", "category": "remote_management", "patterns": [
+      "teamviewer", "anydesk", "^realvnc", "tightvnc", "ultravnc", "screenconnect", "connectwise",
+      "^n-able:", "n-central", "^solarwinds:", "^kaseya:", "^datto:", "^ivanti:(endpoint_manager|avalanche|epm)",
+      "^manageengine", "^zohocorp:manageengine", "^pdq:", "^bmc:", "^ca:", "^nagios", "^zabbix", "^cacti",
+      "^librenms", "^checkmk", "remote_(desktop|monitoring|management)", "^microsoft:remote_desktop",
+      "^ansible", "^puppet", "^saltstack", "^chef:"]},
+
+    {"id": "database_storage", "category": "database_storage", "patterns": [
+      "^mysql", ":mysql", "mariadb", "postgresql", "^postgres", "^oracle:database", "^microsoft:sql_server",
+      "mongodb", "^redis", "elasticsearch", "opensearch", "^influxdata", "clickhouse", "cassandra",
+      "^sqlite", "^couchdb", "^neo4j", "^synology:", "^qnap:", "^netapp:", "^western_digital:",
+      "^veeam:", "^commvault", "^acronis", "^rubrik", "backup", "network_attached_storage", "^truenas",
+      "^minio", "^ceph"]},
+
+    {"id": "identity", "category": "identity_access", "patterns": [
+      "^microsoft:active_directory", "keycloak", "^okta:", "^ping_identity", "^pingidentity", "^forgerock",
+      "^cyberark", "^beyondtrust", "^thycotic", "^delinea", "^jumpcloud", "^auth0", "^openldap", "^freeipa",
+      "kerberos", "^shibboleth", "single_sign", "identity_(manager|management|provider)", "^bitwarden",
+      "^lastpass", "^keepass", "^1password", "password_manager", "^duo:", "multi-?factor"]},
+
+    {"id": "ot_iot", "category": "iot_ot_building", "patterns": [
+      "^siemens:", "^schneider-electric:", "^schneider_electric:", "^rockwellautomation:", "^rockwell",
+      "^abb:", "^honeywell:", "^emerson:", "^yokogawa:", "^mitsubishielectric:", "^omron:", "^delta_electronics",
+      "^moxa:", "^advantech:", "^phoenixcontact:", "^wago:", "^beckhoff:", "^unitronics", "scada", "^hitachienergy",
+      "programmable_logic", "building_(automation|management)", "^johnsoncontrols", "^carrier:", "^danfoss",
+      "refrigerat", "^hikvision:", "^dahuasecurity:", "^axis:", "ip_camera", "video_recorder", "^nvr", "^dvr",
+      "modbus", "bacnet", "^tridium", "^automateddlogic", "^iologik", "^zebra:", "^brother:", "^canon:",
+      "^epson:", "^lexmark:", "^xerox:", "printer"]},
+
+    {"id": "enterprise_app", "category": "enterprise_application", "patterns": [
+      "^sap:", "^oracle:(e-business|peoplesoft|fusion|weblogic|java|jd_edwards)", "^salesforce",
+      "^progress:(moveit|whatsup)", "moveit", "^cleo:", "^fortra:(goanywhere|filecatalyst)", "goanywhere",
+      "file_transfer", "^jenkins", "^gitlab", "^atlassian:(jira|bamboo|bitbucket)", "^sonatype", "^jfrog",
+      "^apache:(maven|activemq|kafka|airflow|superset|camel|ofbiz|solr|james)", "^elastic:kibana",
+      "^grafana", "^splunk", "^servicenow", "^workday", "^dynamics", "^odoo", "^dolibarr", "^erpnext",
+      "^adobe:(commerce|campaign)", "^opentext", "^ibm:(websphere|mq|sterling|cognos|qradar)",
+      "^redhat:jboss", "^jboss", "^wildfly", "^liferay:"]},
+
+    {"id": "desktop_os", "category": "operating_system", "patterns": [
+      "^microsoft:windows", "^linux:linux_kernel", "^apple:(macos|mac_os)", "^debian:", "^canonical:ubuntu",
+      "^redhat:(enterprise_linux|rhel)", "^fedoraproject:", "^suse:", "^opensuse", "^centos", "^almalinux",
+      "^rockylinux", "^oracle:linux", "^freebsd", "^openbsd", "^netbsd", "^gnu:", "^busybox", "^systemd",
+      "^openssl", "^openssh", "^glibc", "^sudo_project", "^util-linux", "^curl:", "^zlib", "^libxml2",
+      "^gnupg", "operating_system"]},
+
+    {"id": "client_app", "category": "browser_client", "patterns": [
+      "^google:chrome", "^mozilla:(firefox|thunderbird|seamonkey)", "^apple:(safari|webkit)",
+      "^microsoft:(edge|office|word|excel|powerpoint|outlook|onenote|visio|access)", "^chromium",
+      "^adobe:(acrobat|reader|flash|photoshop|illustrator|indesign|after_effects|premiere)",
+      "^libreoffice", "^openoffice", "^foxit", "^7-zip", "^rarlab", "winrar", "^videolan", "^ffmpeg",
+      "^imagemagick", "^gimp", "^notepad-plus-plus", "^putty", "^filezilla", "^winscp", "^zoom:zoom",
+      "^opera", "^brave", "^vivaldi", "pdf_reader", "media_player"]}
+  ]
+}
