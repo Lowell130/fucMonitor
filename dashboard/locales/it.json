@@ -169,5 +169,6 @@
   "col.reference_id": "Riferimento",
   "col.provider_date": "Data della fonte",
   "col.reference_url": "Link",
-  "col.last_seen": "Ultima raccolta (UTC)"
+  "col.last_seen": "Ultima raccolta (UTC)",
+  "vulns.nvd_missing": "Il catalogo delle CVE non è ancora stato scaricato. Apri Pipeline e avvia NVD: il primo scarico richiede 15-20 minuti senza chiave API."
 }

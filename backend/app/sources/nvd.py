@@ -39,6 +39,8 @@ from .base import IngestResult, Source
 WATERMARK = "nvd.last_modified_watermark"
 MAX_WINDOW = timedelta(days=110)  # NVD refuses a lastModified range wider than 120 days
 OVERLAP = timedelta(minutes=10)  # re-ask a little before the watermark, in case of clock skew
+RESUME = "nvd.resume_index"
+MIN_PAGE_SIZE = 250
 CVSS_ORDER = ("cvssMetricV40", "cvssMetricV31", "cvssMetricV30", "cvssMetricV2")
 
 SCHEMA = pa.schema(
@@ -177,10 +179,13 @@ class NvdSource(Source):
         started = state.utcnow()
         if watermark and self.snapshot_dates(settings):
             windows = self._windows(_timestamp(watermark) - OVERLAP, started)
-            mode = "update"
+            mode, resume_from = "update", 0
         else:
             windows = [None]  # the whole catalogue
+            # A full download takes many minutes and NVD does go down mid-way, so it
+            # records how far it got and carries on from there next time.
             mode = "full"
+            resume_from = int(state.get_value(settings.state_db, RESUME) or 0)
 
         retrieved_at = started
         writer = _PartWriter(self, settings, retrieved_at)
@@ -188,11 +193,15 @@ class NvdSource(Source):
         try:
             for index, window in enumerate(windows, start=1):
                 label = "" if window is None else f" ({index}/{len(windows)})"
-                total += self._download(settings, client, window, writer, retrieved_at, report, label)
+                total += self._download(
+                    settings, client, window, writer, retrieved_at, report, label, resume_from
+                )
+                resume_from = 0
         finally:
             written = writer.close()
 
         state.set_value(settings.state_db, WATERMARK, state.iso(started))
+        state.set_value(settings.state_db, RESUME, "0")
         message = f"{total} records ({mode})"
         if mode == "full":
             message += "; first full download"
@@ -216,22 +225,34 @@ class NvdSource(Source):
         retrieved_at: datetime,
         report,
         label: str,
+        resume_from: int = 0,
     ) -> int:
         page_size = settings.nvd_page_size
-        start_index, total_results, seen = 0, None, 0
+        start_index, total_results, seen = resume_from, None, 0
         while True:
             params = {"resultsPerPage": page_size, "startIndex": start_index}
             if window is not None:
                 params["lastModStartDate"] = _api_time(window[0])
                 params["lastModEndDate"] = _api_time(window[1])
-            payload = self._get(settings, client, params)
+            try:
+                payload = self._get(settings, client, params)
+            except RuntimeError:
+                # NVD times out on large pages when it is busy. Ask for less and carry on
+                # from the same place rather than losing the whole download.
+                if page_size <= MIN_PAGE_SIZE:
+                    raise
+                page_size = max(MIN_PAGE_SIZE, page_size // 2)
+                report(f"NVD is slow; asking for {page_size} records at a time{label}")
+                continue
             total_results = payload.get("totalResults", 0)
             entries = payload.get("vulnerabilities") or []
             rows = [r for e in entries if (r := parse_record(e, retrieved_at))]
             writer.write(rows)
             seen += len(entries)
-            start_index += page_size
-            report(f"{min(seen, total_results)}/{total_results} records{label}")
+            start_index += len(entries) or page_size
+            if window is None:
+                state.set_value(settings.state_db, RESUME, str(start_index))
+            report(f"{min(start_index, total_results)}/{total_results} records{label}")
             if not entries or start_index >= total_results:
                 return seen
 
@@ -241,11 +262,12 @@ class NvdSource(Source):
         last_error: Exception | None = None
         for attempt in range(settings.nvd_max_retries + 1):
             if attempt:
-                time.sleep(min(delay * 2 ** attempt, 60))
+                time.sleep(min(delay * 2 ** attempt, 30))
             try:
                 response = client.get(settings.nvd_url, params=params, headers=headers)
-                if response.status_code in (403, 429, 503):
-                    # NVD answers 403 when the rate limit is exceeded, not only when denied.
+                if response.status_code in (403, 429) or response.status_code >= 500:
+                    # 403 is how NVD answers a rate limit, not only a denial; 5xx covers its
+                    # gateway timeouts (502, 503, 504, 524), which are common under load.
                     last_error = httpx.HTTPStatusError(
                         f"HTTP {response.status_code} from NVD", request=response.request, response=response
                     )

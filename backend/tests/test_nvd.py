@@ -164,3 +164,52 @@ def test_api_serves_the_catalogue_and_a_merged_cve_profile(nvd, client):
         assert profile["kev"] is None and profile["epss"] is None and profile["exploits"] == []
         assert api.get("/api/v1/cve/CVE-1999-9999").json()["nvd"] is None
         assert api.get("/api/v1/cve/not-a-cve").status_code == 422
+
+
+def test_a_slow_api_makes_it_ask_for_smaller_pages(nvd, monkeypatch):
+    """NVD times out on big pages when busy: halve the page instead of losing the download."""
+    settings, box, client = nvd
+    settings.nvd_page_size = 1000
+    settings.nvd_max_retries = 0
+    box["pages"] = [payload([record("CVE-2026-0001")], 1)]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        box["calls"].append(dict(request.url.params))
+        if request.url.params["resultsPerPage"] == "1000":
+            return httpx.Response(524)  # gateway timeout, as seen in the real run
+        return httpx.Response(200, content=box["pages"].pop(0))
+
+    run = runner.run_source(settings, "nvd", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert run["status"] == "success" and run["rows"] == 1
+    assert [c["resultsPerPage"] for c in box["calls"]] == ["1000", "500"]
+
+
+def test_an_interrupted_full_download_carries_on_from_where_it_stopped(nvd):
+    settings, box, client = nvd  # page size 2
+    settings.nvd_max_retries = 0
+    box["pages"] = [payload([record("CVE-2026-0001"), record("CVE-2026-0002")], 6)]
+
+    def failing(request: httpx.Request) -> httpx.Response:
+        box["calls"].append(dict(request.url.params))
+        if box["pages"]:
+            return httpx.Response(200, content=box["pages"].pop(0))
+        return httpx.Response(503)
+
+    settings.nvd_page_size = 2
+    first = runner.run_source(settings, "nvd", client=httpx.Client(transport=httpx.MockTransport(failing)))
+    assert first["status"] == "failed"
+    assert state.get_value(settings.state_db, "nvd.resume_index") == "2"
+    assert state.get_value(settings.state_db, WATERMARK) is None
+
+    box["calls"].clear()
+    box["pages"] = [payload([record("CVE-2026-0003"), record("CVE-2026-0004")], 6, start=2),
+                    payload([record("CVE-2026-0005"), record("CVE-2026-0006")], 6, start=4)]
+    second = runner.run_source(settings, "nvd", client=client)
+    assert second["status"] == "success" and "full" in second["message"]
+    assert box["calls"][0]["startIndex"] == "2"  # the first two records are not asked for again
+    assert state.get_value(settings.state_db, "nvd.resume_index") == "0"
+
+    rows = duckdb.connect().execute(
+        f"SELECT count(*) FROM ({queries.nvd_latest()})", [SOURCES["nvd"].curated_files(settings)]
+    ).fetchone()[0]
+    assert rows == 6

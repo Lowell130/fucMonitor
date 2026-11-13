@@ -289,15 +289,16 @@ def page_vulns() -> None:
         st.info(t("vulns.no_data"))
         return
 
-    if data["total"]:
-        cols = st.columns(5)
-        cols[0].metric(t("vulns.total"), number(data["total"]))
-        cols[1].metric(t("vulns.with_cvss"), number(data["with_cvss"]))
-        cols[2].metric(t("vulns.with_products"), number(data["with_products"]))
-        cols[3].metric(t("vulns.with_exploit_ref"), number(data["with_exploit_reference"]))
-        cols[4].metric(t("vulns.with_exploit_code"), number(exploits["cves"]))
-        st.caption(t("vulns.as_of", date=(data["retrieved_at"] or "–")[:10]))
+    cols = st.columns(5)
+    cols[0].metric(t("vulns.total"), number(data["total"]))
+    cols[1].metric(t("vulns.with_cvss"), number(data["with_cvss"]))
+    cols[2].metric(t("vulns.with_products"), number(data["with_products"]))
+    cols[3].metric(t("vulns.with_exploit_ref"), number(data["with_exploit_reference"]))
+    cols[4].metric(t("vulns.with_exploit_code"), number(exploits["cves"]))
+    if data["retrieved_at"]:
+        st.caption(t("vulns.as_of", date=data["retrieved_at"][:10]))
 
+    if data["total"]:
         left, right = st.columns([3, 2])
         with left:
             st.subheader(t("vulns.by_year"))
@@ -314,14 +315,18 @@ def page_vulns() -> None:
         with right:
             st.subheader(t("vulns.by_severity"))
             table(data["by_severity"], ["severity", "cves"])
-            st.subheader(t("vulns.providers"))
-            table(exploits["providers"], ["provider", "entries", "cves", "last_seen"])
 
         st.subheader(t("vulns.vendors"))
         a, b = st.columns([1, 3])
         since = a.select_slider(t("vulns.vendors_since"), [1999, 2018, 2024, 2026], value=2018)
         table(get("/api/v1/nvd/vendors", limit=25, since_year=since)["items"], ["vendor", "cves", "products"])
         st.caption(t("vulns.vendors_help"))
+    else:
+        st.warning(t("vulns.nvd_missing"))
+
+    if exploits["providers"]:
+        st.subheader(t("vulns.providers"))
+        table(exploits["providers"], ["provider", "entries", "cves", "last_seen"])
 
     st.subheader(t("vulns.lookup"))
     cve = st.text_input(t("vulns.lookup"), placeholder=t("epss.lookup_hint"), label_visibility="collapsed")

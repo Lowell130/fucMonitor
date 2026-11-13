@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # https://nvd.nist.gov/developers/request-an-api-key
     nvd_api_key: str | None = None
     nvd_page_size: int = 2000
-    nvd_max_retries: int = 4
+    nvd_max_retries: int = 3
     # Seconds between requests. Left empty, it follows NIST's advice for the key in use.
     nvd_delay_seconds: float | None = None
 
