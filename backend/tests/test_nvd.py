@@ -233,3 +233,22 @@ def test_a_part_file_left_by_a_killed_process_is_cleared(nvd):
     run = runner.run_source(settings, "nvd", client=client)
     assert run["status"] == "success"
     assert not list((settings.curated_dir / "nvd").glob("**/*.tmp"))
+
+
+def test_a_resume_point_beyond_the_stored_records_is_not_trusted(nvd, monkeypatch):
+    """Records 0..N must never be skipped because a counter says they were fetched."""
+    from app.sources import nvd as nvd_source
+
+    monkeypatch.setattr(nvd_source, "ROLL_EVERY", 2)
+    settings, box, client = nvd
+    box["pages"] = [payload([record("CVE-2026-0001"), record("CVE-2026-0002")], 2)]
+    runner.run_source(settings, "nvd", client=client)  # stores 2 records
+
+    # Something moved the counter ahead of the data (a lost part file, a manual edit).
+    state.set_value(settings.state_db, "nvd.resume_index", "20000")
+    state.set_value(settings.state_db, WATERMARK, "")
+    box["pages"] = [payload([record("CVE-2026-0001"), record("CVE-2026-0002")], 2)]
+    box["calls"].clear()
+    run = runner.run_source(settings, "nvd", client=client)
+    assert run["status"] == "success"
+    assert box["calls"][0]["startIndex"] == "0"  # back to the beginning, no silent gap

@@ -22,12 +22,14 @@ without an API key, 50 with one. A free key makes the first full download much f
 """
 
 import json
+import logging
 import os
 import re
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+import duckdb
 import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -40,6 +42,7 @@ WATERMARK = "nvd.last_modified_watermark"
 MAX_WINDOW = timedelta(days=110)  # NVD refuses a lastModified range wider than 120 days
 OVERLAP = timedelta(minutes=10)  # re-ask a little before the watermark, in case of clock skew
 RESUME = "nvd.resume_index"
+log = logging.getLogger("fucmonitor.nvd")
 MIN_PAGE_SIZE = 250
 # Records per part file. Also how much a cut-short download may have to fetch again.
 ROLL_EVERY = 25_000
@@ -187,7 +190,7 @@ class NvdSource(Source):
             # A full download takes many minutes and NVD does go down mid-way, so it
             # records how far it got and carries on from there next time.
             mode = "full"
-            resume_from = int(state.get_value(settings.state_db, RESUME) or 0)
+            resume_from = self._safe_resume(settings, report)
 
         retrieved_at = started
         for leftover in (settings.curated_dir / self.name).glob("snapshot_date=*/*.parquet.tmp"):
@@ -210,6 +213,35 @@ class NvdSource(Source):
         if mode == "full":
             message += "; first full download"
         return IngestResult(retrieved_at.date(), written, 0, "", written > 0, message)
+
+    def _safe_resume(self, settings: Settings, report) -> int:
+        """Where to carry on from, but never further than the records actually stored.
+
+        The resume point and the stored files can fall out of step: files deleted by hand,
+        a part lost, a crash at the wrong moment. Trusting the number alone would leave a
+        silent hole in the catalogue, so it is checked against what is really on disk.
+        """
+        resume_from = int(state.get_value(settings.state_db, RESUME) or 0)
+        if not resume_from:
+            return 0
+        files = self.curated_files(settings)
+        stored = 0
+        if files:
+            con = duckdb.connect()
+            try:
+                stored = con.execute("SELECT count(*) FROM read_parquet(?)", [files]).fetchone()[0]
+            finally:
+                con.close()
+        if stored < resume_from:
+            message = (
+                f"only {stored} records are stored but the download claims to have reached "
+                f"{resume_from}: starting again from the beginning"
+            )
+            log.warning("nvd: %s", message)
+            report(message)
+            state.set_value(settings.state_db, RESUME, "0")
+            return 0
+        return resume_from
 
     # --- downloading -------------------------------------------------------
     def _windows(self, start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
