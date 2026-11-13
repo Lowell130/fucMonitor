@@ -49,6 +49,10 @@ Fatto:
   solidità (fonte ufficiale, riportato, rivendicazione o ipotesi), settori citati, raggruppamento della
   stessa notizia tra feed diversi nella stessa lingua.
 
+- Catalogo NVD completo (CVE, CVSS, CWE, prodotti CPE), aggiornato in modo incrementale.
+- Exploit pubblici da Metasploit, Nuclei ed Exploit-DB, tenuti separati per fonte.
+- Profilo unificato di un CVE: NVD, KEV, EPSS, exploit pubblici e citazioni nelle notizie.
+
 Limiti noti delle notizie:
 
 - Le regole sono semplici e sbagliano su una parte degli elementi. Ogni etichetta riporta la versione delle regole.
@@ -58,8 +62,7 @@ Limiti noti delle notizie:
 Prossimi passi, in ordine:
 
 1. Notizie: raggruppamento multilingue e verifica a campione della qualità delle regole.
-2. NVD e CPE, exploit pubblici (Exploit-DB, Metasploit, Nuclei), altre etichette di sfruttamento.
-3. Mappatura prodotto → categoria con editor e coda di revisione.
-4. Dataset a livello CVE, baseline e primo modello, confronto con EPSS.
-5. Aggregazione per categoria e pagina Previsioni.
-6. Segnali live, poi frontend React.
+2. Mappatura prodotto → categoria tecnologica, con editor e coda di revisione.
+3. Dataset a livello CVE con feature point-in-time, baseline e primo modello, confronto con EPSS.
+4. Aggregazione per categoria e pagina Previsioni.
+5. Segnali live, poi frontend React.

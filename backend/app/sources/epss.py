@@ -40,10 +40,10 @@ class EpssSource(Source):
     homepage = "https://www.first.org/epss/data"
     raw_filename = "epss_scores.csv.gz"
 
-    def ingest(self, settings: Settings, client: httpx.Client) -> IngestResult:
+    def ingest(self, settings: Settings, client: httpx.Client, progress=None) -> IngestResult:
         return self._store(settings, download(client, settings.epss_url), settings.epss_url)
 
-    def backfill(self, settings: Settings, client: httpx.Client, day: date) -> IngestResult:
+    def backfill(self, settings: Settings, client: httpx.Client, day: date, progress=None) -> IngestResult:
         """Fetch one historical day. Valid point-in-time: the file is the score as of `day`."""
         url = settings.epss_dated_url.format(date=day.isoformat())
         return self._store(settings, download(client, url), url, fallback_date=day, backfilled=True)

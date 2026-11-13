@@ -41,7 +41,8 @@ class Source:
     # "daily": one snapshot per day. "interval": collected several times a day.
     cadence: str = "daily"
 
-    def ingest(self, settings: Settings, client: httpx.Client) -> IngestResult:
+    def ingest(self, settings: Settings, client: httpx.Client, progress=None) -> IngestResult:
+        """Download and store. `progress` takes a short string shown in the job history."""
         raise NotImplementedError
 
     # --- paths -------------------------------------------------------------
@@ -54,14 +55,20 @@ class Source:
         )
 
     def snapshot_dates(self, settings: Settings) -> list[date]:
+        """Days that hold at least one stored file. A day may hold several part files."""
         root = settings.curated_dir / self.name
-        found = []
-        for p in root.glob("snapshot_date=*/data.parquet"):
+        found = set()
+        for p in root.glob("snapshot_date=*/*.parquet"):
             try:
-                found.append(date.fromisoformat(p.parent.name.split("=", 1)[1]))
+                found.add(date.fromisoformat(p.parent.name.split("=", 1)[1]))
             except ValueError:
                 continue
         return sorted(found)
+
+    def curated_files(self, settings: Settings) -> list[str]:
+        """Every stored file, oldest day first. Pass it straight to read_parquet."""
+        root = settings.curated_dir / self.name
+        return [p.as_posix() for p in sorted(root.glob("snapshot_date=*/*.parquet"))]
 
     # --- helpers -----------------------------------------------------------
     def stored_sha256(self, settings: Settings, snapshot: date) -> str | None:

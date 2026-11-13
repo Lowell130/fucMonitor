@@ -124,6 +124,11 @@ def _news_files(settings: Settings) -> list[str]:
     return [source.curated_path(settings, d).as_posix() for d in source.snapshot_dates(settings)]
 
 
+def _ts(column: str, alias: str | None = None) -> str:
+    """Read a UTC timestamp as a plain one: DuckDB needs pytz to return a zoned value."""
+    return f"make_timestamp(CAST(epoch({column}) * 1000000 AS BIGINT)) AS {alias or column}"
+
+
 def _utc(value) -> str | None:
     return value.strftime("%Y-%m-%dT%H:%M:%SZ") if value is not None else None
 
@@ -199,8 +204,7 @@ def news_list(
     # Timestamps are stored in UTC. epoch() avoids any dependency on the session time zone.
     items = _rows(
         f"""SELECT item_id, feed_id, feed_title, source_kind, language, title, link, summary,
-                   make_timestamp(CAST(epoch(published_at) * 1000000 AS BIGINT)) AS published_at,
-                   make_timestamp(CAST(epoch(first_seen_at) * 1000000 AS BIGINT)) AS first_seen_at,
+                   {_ts("published_at")}, {_ts("first_seen_at")},
                    cve_ids, event_type, exploitation_signal, claim_status, target_sectors,
                    story_id, story_feeds
             FROM ({base})
@@ -288,4 +292,146 @@ def overview(settings: Settings) -> dict:
                LEFT JOIN read_parquet(?) e USING (cve_id)""",
             [_file(settings, "kev", kev_snap), _file(settings, "epss", epss_snap)],
         )[0]
+    return out
+
+
+# --- NVD ---------------------------------------------------------------------
+def nvd_latest() -> str:
+    """SQL for the current state of every CVE: its most recently retrieved row.
+
+    Takes one parameter, the list of stored files. Reading "as of" a past day means
+    passing only the files up to that day.
+    """
+    return """SELECT * EXCLUDE (_rank) FROM (
+                  SELECT *, row_number() OVER (PARTITION BY cve_id ORDER BY retrieved_at DESC) AS _rank
+                  FROM read_parquet(?)
+              ) WHERE _rank = 1"""
+
+
+def _nvd_files(settings: Settings) -> list[str]:
+    return SOURCES["nvd"].curated_files(settings)
+
+
+def nvd_overview(settings: Settings) -> dict:
+    files = _nvd_files(settings)
+    empty = {"total": None, "with_cvss": None, "with_products": None, "with_exploit_reference": None,
+             "retrieved_at": None, "by_year": [], "by_severity": []}
+    if not files:
+        return empty
+    latest = nvd_latest()
+    row = _rows(
+        f"""SELECT count(*) AS total,
+                   count(cvss_score) AS with_cvss,
+                   count(*) FILTER (WHERE len(products) > 0) AS with_products,
+                   count(*) FILTER (WHERE has_exploit_reference) AS with_exploit_reference,
+                   {_ts("max(retrieved_at)", "retrieved_at")}
+            FROM ({latest})""",
+        [files],
+    )[0]
+    row["retrieved_at"] = _utc(row["retrieved_at"])
+    row["by_year"] = _rows(
+        f"""SELECT CAST(year(published) AS INTEGER) AS year, count(*) AS cves FROM ({latest})
+            WHERE published IS NOT NULL GROUP BY 1 ORDER BY 1""",
+        [files],
+    )
+    row["by_severity"] = _rows(
+        f"""SELECT cvss_severity AS severity, count(*) AS cves FROM ({latest})
+            WHERE cvss_severity IS NOT NULL GROUP BY 1 ORDER BY cves DESC""",
+        [files],
+    )
+    return row
+
+
+def nvd_vendors(settings: Settings, limit: int, since_year: int | None = None) -> dict:
+    """Vendors with the most CVE records. A wide product range means more records;
+    this is not a measure of how secure a vendor is."""
+    files = _nvd_files(settings)
+    if not files:
+        return {"items": []}
+    where = "WHERE len(vendors) > 0"
+    params: list = [files]
+    if since_year:
+        where += " AND year(published) >= ?"
+        params.append(since_year)
+    items = _rows(
+        f"""SELECT vendor, count(DISTINCT cve_id) AS cves, count(DISTINCT product) AS products FROM (
+                SELECT cve_id, unnest(vendors) AS vendor, unnest(products) AS product
+                FROM ({nvd_latest()}) {where}
+            ) GROUP BY 1 ORDER BY cves DESC, vendor LIMIT ?""",
+        params + [limit],
+    )
+    return {"items": items}
+
+
+# --- public exploits ---------------------------------------------------------
+def exploits_overview(settings: Settings) -> dict:
+    files = SOURCES["exploits"].curated_files(settings)
+    if not files:
+        return {"cves": 0, "providers": []}
+    total = _rows("SELECT count(DISTINCT cve_id) AS n FROM read_parquet(?)", [files])[0]["n"]
+    providers = _rows(
+        """SELECT provider, count(*) AS entries, count(DISTINCT cve_id) AS cves,
+                  make_timestamp(CAST(epoch(max(first_seen_at)) * 1000000 AS BIGINT)) AS last_seen
+           FROM read_parquet(?) GROUP BY 1 ORDER BY provider""",
+        [files],
+    )
+    for provider in providers:
+        provider["last_seen"] = _utc(provider["last_seen"])
+    return {"cves": total, "providers": providers}
+
+
+# --- one CVE across every source ----------------------------------------------
+def cve_profile(settings: Settings, cve_id: str) -> dict:
+    """Everything this system holds about one CVE. Each source is reported separately."""
+    cve_id = cve_id.strip().upper()
+    out: dict = {"cve_id": cve_id, "nvd": None, "kev": None, "epss": None,
+                 "exploits": [], "exploit_providers": [], "news": []}
+
+    files = _nvd_files(settings)
+    if files:
+        found = _rows(
+            f"""SELECT * EXCLUDE (published, last_modified, retrieved_at),
+                       {_ts("published")}, {_ts("last_modified")}, {_ts("retrieved_at")}
+                FROM ({nvd_latest()}) WHERE cve_id = ?""",
+            [files, cve_id],
+        )
+        if found:
+            for column in ("published", "last_modified", "retrieved_at"):
+                found[0][column] = _utc(found[0][column])
+            out["nvd"] = found[0]
+
+    kev_snapshot = latest(settings, "kev")
+    if kev_snapshot:
+        found = _rows(
+            """SELECT cve_id, vendor_project, product, vulnerability_name, date_added, due_date,
+                      known_ransomware_campaign_use, short_description
+               FROM read_parquet(?) WHERE cve_id = ?""",
+            [_file(settings, "kev", kev_snapshot), cve_id],
+        )
+        out["kev"] = found[0] if found else None
+
+    epss_snapshot = latest(settings, "epss")
+    if epss_snapshot:
+        found = _rows(
+            "SELECT cve_id, epss, percentile, score_date FROM read_parquet(?) WHERE cve_id = ?",
+            [_file(settings, "epss", epss_snapshot), cve_id],
+        )
+        out["epss"] = found[0] if found else None
+
+    exploit_files = SOURCES["exploits"].curated_files(settings)
+    if exploit_files:
+        rows = _rows(
+            """SELECT provider, reference_id, title, reference_url, provider_date,
+                      make_timestamp(CAST(epoch(first_seen_at) * 1000000 AS BIGINT)) AS first_seen_at
+               FROM read_parquet(?) WHERE cve_id = ? ORDER BY provider, reference_id""",
+            [exploit_files, cve_id],
+        )
+        for row in rows:
+            row["first_seen_at"] = _utc(row["first_seen_at"])
+        out["exploits"] = rows
+        out["exploit_providers"] = sorted({r["provider"] for r in rows})
+
+    news_files = _news_files(settings)
+    if news_files:
+        out["news"] = news_list(settings, 20, 0, search=cve_id)["items"]
     return out

@@ -80,7 +80,7 @@ class KevSource(Source):
     homepage = "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"
     raw_filename = "known_exploited_vulnerabilities.json"
 
-    def ingest(self, settings: Settings, client: httpx.Client) -> IngestResult:
+    def ingest(self, settings: Settings, client: httpx.Client, progress=None) -> IngestResult:
         content = download(client, settings.kev_url)
         retrieved_at = utcnow()
         snapshot = retrieved_at.date()

@@ -187,7 +187,7 @@ class NewsSource(Source):
     homepage = "https://github.com/Lowell130/fucMonitor/blob/main/backend/app/sources/feeds.json"
     cadence = "interval"
 
-    def ingest(self, settings: Settings, client: httpx.Client) -> IngestResult:
+    def ingest(self, settings: Settings, client: httpx.Client, progress=None) -> IngestResult:
         config = load_feeds(settings)
         keywords = [k.casefold() for k in config.get("general_keywords", [])]
         feeds = [f for f in config["feeds"] if f.get("enabled", True)]
@@ -248,7 +248,7 @@ class NewsSource(Source):
         return IngestResult(seen_at.date(), len(new_rows), total_bytes, "", bool(new_rows), message)
 
     def _known_ids(self, settings: Settings) -> set[str]:
-        files = [self.curated_path(settings, d).as_posix() for d in self.snapshot_dates(settings)]
+        files = self.curated_files(settings)
         if not files:
             return set()
         con = duckdb.connect()

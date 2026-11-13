@@ -14,7 +14,7 @@ def api(settings):
 def test_empty_system_answers_without_errors(api):
     assert api.get("/health").json()["status"] == "ok"
     sources = api.get("/api/v1/sources").json()
-    assert [s["name"] for s in sources["sources"]] == ["kev", "epss", "news"]
+    assert [s["name"] for s in sources["sources"]] == ["kev", "epss", "nvd", "exploits", "news"]
     assert all(s["snapshots"] == 0 and s["latest_snapshot_date"] is None for s in sources["sources"])
     assert api.get("/api/v1/overview").json()["kev_total"] is None
     assert api.get("/api/v1/kev").json() == {"snapshot_date": None, "total": 0, "items": []}

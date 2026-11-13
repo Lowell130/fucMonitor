@@ -5,12 +5,12 @@ import logging
 import threading
 from contextlib import asynccontextmanager
 from datetime import date
-from pathlib import Path
+from pathlib import Path as PathLib
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Path, Query
 
 from . import queries, runner, state
 from .config import get_settings
@@ -20,7 +20,7 @@ from .sources.news import load_feeds
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("fucmonitor")
 
-TAXONOMY = Path(__file__).parent / "taxonomy" / "categories.json"
+TAXONOMY = PathLib(__file__).parent / "taxonomy" / "categories.json"
 VERSION = "0.1.0"
 
 
@@ -257,6 +257,31 @@ def news_feeds() -> dict:
         items.append({**feed, "enabled": feed.get("enabled", True),
                       **{k: saved.get(k, v) for k, v in blank.items()}})
     return {"items": items}
+
+
+@app.get("/api/v1/nvd/overview", tags=["data"])
+def nvd_overview() -> dict:
+    """Current state of the CVE catalogue as last retrieved from NVD."""
+    return queries.nvd_overview(get_settings())
+
+
+@app.get("/api/v1/nvd/vendors", tags=["data"])
+def nvd_vendors(
+    limit: int = Query(25, ge=1, le=500),
+    since_year: int | None = Query(None, ge=1999, le=2100, description="Only CVEs published since"),
+) -> dict:
+    return queries.nvd_vendors(get_settings(), limit, since_year)
+
+
+@app.get("/api/v1/exploits/overview", tags=["data"])
+def exploits_overview() -> dict:
+    return queries.exploits_overview(get_settings())
+
+
+@app.get("/api/v1/cve/{cve_id}", tags=["data"])
+def cve_profile(cve_id: str = Path(pattern=r"^(?i)CVE-\d{4}-\d{4,7}$")) -> dict:
+    """Everything stored about one CVE: NVD record, KEV, EPSS, public exploits, mentions."""
+    return queries.cve_profile(get_settings(), cve_id)
 
 
 @app.get("/api/v1/taxonomy", tags=["data"])

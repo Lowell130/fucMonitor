@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS feed_state (
     total_items          INTEGER NOT NULL DEFAULT 0,
     consecutive_failures INTEGER NOT NULL DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS kv (
+    key        TEXT PRIMARY KEY,
+    value      TEXT,
+    updated_at TEXT
+);
 """
 
 
@@ -161,3 +167,27 @@ def record_feed(db_path: Path, fetched_at: datetime, outcome: dict, new_items: i
                    WHERE feed_id = ?""",
                 (now, outcome["message"], outcome["feed_id"]),
             )
+
+
+# --- small key/value store (watermarks and similar) ----------------------------
+def get_value(db_path: Path, key: str) -> str | None:
+    with connect(db_path) as conn:
+        row = conn.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else None
+
+
+def set_value(db_path: Path, key: str, value: str) -> None:
+    with connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO kv (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            (key, value, iso(utcnow())),
+        )
+
+
+def set_run_message(db_path: Path, run_id: int, message: str) -> None:
+    """Progress of a running job, so a long download is visible while it happens."""
+    with connect(db_path) as conn:
+        conn.execute(
+            "UPDATE job_runs SET message = ? WHERE id = ? AND status = 'running'", (message[:1000], run_id)
+        )

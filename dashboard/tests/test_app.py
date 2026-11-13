@@ -65,6 +65,13 @@ FULL = {
         {"id": "gen", "title": "Gen", "url": "https://x/gen", "language": "it", "kind": "general", "enabled": True,
          "last_fetch_at": "2026-11-12T09:00:00Z", "last_status": "failed", "last_message": "HTTPStatusError: 404",
          "last_success_at": None, "items_seen": 0, "items_new": 0, "total_items": 0, "consecutive_failures": 2}]},
+    "/api/v1/nvd/overview": {"total": 310000, "with_cvss": 290000, "with_products": 250000,
+                             "with_exploit_reference": 41000, "retrieved_at": "2026-11-13T06:20:00Z",
+                             "by_year": [{"year": 2025, "cves": 40000}, {"year": 2026, "cves": 38000}],
+                             "by_severity": [{"severity": "HIGH", "cves": 100}, {"severity": "CRITICAL", "cves": 50}]},
+    "/api/v1/nvd/vendors": {"items": [{"vendor": "acme", "cves": 120, "products": 14}]},
+    "/api/v1/exploits/overview": {"cves": 9000, "providers": [
+        {"provider": "metasploit", "entries": 3500, "cves": 3400, "last_seen": "2026-11-13T06:20:00Z"}]},
     "/api/v1/epss/top": {"snapshot_date": "2026-11-12", "items": [{"cve_id": "CVE-2024-0001", "epss": 0.94, "percentile": 0.999, "in_kev": True}]},
 }
 EMPTY = {
@@ -78,6 +85,10 @@ EMPTY = {
     "/api/v1/jobs": {"items": []},
     "/api/v1/kev": {"snapshot_date": None, "total": 0, "items": []},
     "/api/v1/epss/top": {"snapshot_date": None, "items": []},
+    "/api/v1/nvd/overview": {"total": None, "with_cvss": None, "with_products": None,
+                             "with_exploit_reference": None, "retrieved_at": None, "by_year": [], "by_severity": []},
+    "/api/v1/nvd/vendors": {"items": []},
+    "/api/v1/exploits/overview": {"cves": 0, "providers": []},
     "/api/v1/news": {"total": 0, "items": []},
     "/api/v1/news/trend": {"by": "event_type", "days": 14, "items": []},
     "/api/v1/taxonomy": TAXONOMY,
@@ -90,7 +101,7 @@ EMPTY = {
 
 @pytest.mark.parametrize("responses", [FULL, EMPTY], ids=["full", "empty"])
 @pytest.mark.parametrize("lang", ["en", "it"])
-@pytest.mark.parametrize("page", ["overview", "pipeline", "news", "kev", "epss"])
+@pytest.mark.parametrize("page", ["overview", "pipeline", "news", "vulns", "kev", "epss"])
 def test_page_renders(monkeypatch, responses, lang, page):
     def fake(method, url, params=None, timeout=None):
         path = httpx.URL(url).path
@@ -103,7 +114,7 @@ def test_page_renders(monkeypatch, responses, lang, page):
     at.sidebar.radio[0].set_value(page).run()
     assert not at.exception, at.exception
     visible = " ".join(str(e.value) for e in [*at.header, *at.subheader, *at.caption, *at.info])
-    for prefix in ("nav.", "overview.", "pipeline.", "common.", "epss.", "kev.", "app.", "news.", "kind."):
+    for prefix in ("nav.", "overview.", "pipeline.", "common.", "epss.", "kev.", "app.", "news.", "kind.", "vulns."):
         assert prefix not in visible, visible
 
 

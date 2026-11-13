@@ -2,9 +2,11 @@
 
 from .base import IngestResult, Source
 from .epss import EpssSource
+from .exploits import ExploitsSource
 from .kev import KevSource
 from .news import NewsSource
+from .nvd import NvdSource
 
-SOURCES: dict[str, Source] = {s.name: s for s in (KevSource(), EpssSource(), NewsSource())}
+SOURCES: dict[str, Source] = {s.name: s for s in (KevSource(), EpssSource(), NvdSource(), ExploitsSource(), NewsSource())}
 
 __all__ = ["SOURCES", "Source", "IngestResult"]

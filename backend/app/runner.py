@@ -49,10 +49,13 @@ def run_source(
     owns_client = client is None
     client = client or http_client(settings)
     try:
+        def report(message: str) -> None:
+            state.set_run_message(settings.state_db, run_id, message)
+
         if backfill_day is not None:
-            result: IngestResult = source.backfill(settings, client, backfill_day)  # type: ignore[attr-defined]
+            result: IngestResult = source.backfill(settings, client, backfill_day, report)  # type: ignore[attr-defined]
         else:
-            result = source.ingest(settings, client)
+            result = source.ingest(settings, client, report)
         state.finish_run(
             settings.state_db,
             run_id,

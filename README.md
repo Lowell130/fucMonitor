@@ -4,8 +4,8 @@ Tendenze di sfruttamento delle vulnerabilità per categoria tecnologica, a livel
 Tendenze, non attribuzioni: nessun Paese o gruppo viene indicato come responsabile.
 
 Questa è la prima versione: l'ambiente locale in Docker, l'archiviazione giornaliera di due
-fonti reali (CISA KEV ed EPSS), la raccolta oraria di notizie e avvisi di sicurezza, e una
-dashboard di sviluppo per controllare la pipeline.
+fonti reali (CISA KEV, EPSS, NVD e gli exploit pubblici), la raccolta oraria di notizie e
+avvisi di sicurezza, e una dashboard di sviluppo per controllare la pipeline.
 Modelli e previsioni arrivano nei passi successivi (vedi `docs/DECISIONS.md`).
 
 ## Avvio
@@ -46,6 +46,30 @@ state/fucmonitor.sqlite        storico delle esecuzioni
 Ogni riga conserva sia la data a cui i dati si riferiscono sia il momento in cui sono stati
 raccolti: serve più avanti per addestrare i modelli senza usare informazioni dal futuro.
 
+## Catalogo delle vulnerabilità (NVD)
+
+NVD fornisce, per ogni CVE, data di pubblicazione, gravità CVSS, tipo di debolezza (CWE) e
+soprattutto i **prodotti interessati** (CPE): è la base per collegare le vulnerabilità alle
+categorie tecnologiche.
+
+Il primo scarico prende l'intero catalogo (oltre 300.000 CVE) e richiede circa **15-20 minuti**
+senza chiave API, pochi minuti con. Parte da solo al primo avvio e mostra l'avanzamento nella
+sezione Pipeline. Gli scarichi successivi chiedono solo i record cambiati dall'ultima volta.
+
+Una chiave API gratuita si richiede su https://nvd.nist.gov/developers/request-an-api-key e si
+mette in `.env` come `FUC_NVD_API_KEY=...`: alza il limite da 5 a 50 richieste ogni 30 secondi.
+
+NVD riscrive i record nel tempo (gravità e prodotti vengono spesso completati settimane dopo),
+quindi ogni riga conserva il momento in cui è stata scaricata e viene archiviata una partizione
+per giorno: lo stato attuale di un CVE è la sua riga più recente.
+
+## Exploit pubblici
+
+Tre fonti, tenute distinte perché sono evidenze diverse: un modulo **Metasploit** è pronto
+all'uso, un template **Nuclei** di solito si limita a rilevare, una voce **Exploit-DB** è spesso
+una prova di concetto. Ogni coppia exploit-CVE viene archiviata una sola volta, il giorno in cui
+viene vista per la prima volta.
+
 ## Notizie e avvisi
 
 Ogni ora il backend legge i feed RSS elencati in `backend/app/sources/feeds.json`: avvisi
@@ -81,6 +105,7 @@ un errore 404, controlla l'indirizzo attuale su https://www.first.org/epss/data 
 
 ```
 docker compose exec backend python -m app.cli ingest        # scarica ora tutte le fonti
+docker compose exec backend python -m app.cli ingest nvd    # solo il catalogo NVD
 docker compose exec backend python -m pytest -q             # test del backend
 docker compose exec dashboard python -m pytest -q tests     # test della dashboard
 docker compose logs -f backend                              # log

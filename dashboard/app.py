@@ -15,7 +15,7 @@ import streamlit as st
 from i18n import LANGUAGES, translate
 
 API_URL = os.environ.get("FUC_API_URL", "http://localhost:8000").rstrip("/")
-PAGES = ["overview", "pipeline", "news", "kev", "epss"]
+PAGES = ["overview", "pipeline", "news", "vulns", "kev", "epss"]
 
 st.set_page_config(page_title="fucMonitor", page_icon="📈", layout="wide")
 
@@ -77,9 +77,6 @@ def page_overview() -> None:
     if data["kev_total"] is None and data["epss_total"] is None:
         st.info(t("common.no_data"))
         return
-
-    def number(value) -> str:
-        return "–" if value is None else f"{value:,}".replace(",", " ")
 
     cols = st.columns(5)
     cols[0].metric(t("overview.kev_total"), number(data["kev_total"]))
@@ -186,6 +183,11 @@ def page_pipeline() -> None:
     )
 
 
+def number(value) -> str:
+    """Thin spaces as thousands separator: readable in both languages."""
+    return "–" if value is None else f"{value:,}".replace(",", " ")
+
+
 def labels(group: str) -> dict[str, str]:
     """Display labels for taxonomy IDs, in the current language."""
     return {entry["id"]: entry.get(lang) or entry["en"] for entry in get("/api/v1/taxonomy").get(group, [])}
@@ -279,6 +281,87 @@ def page_news() -> None:
     )
 
 
+def page_vulns() -> None:
+    st.header(t("nav.vulns"))
+    data = get("/api/v1/nvd/overview")
+    exploits = get("/api/v1/exploits/overview")
+    if data["total"] is None and not exploits["cves"]:
+        st.info(t("vulns.no_data"))
+        return
+
+    if data["total"]:
+        cols = st.columns(5)
+        cols[0].metric(t("vulns.total"), number(data["total"]))
+        cols[1].metric(t("vulns.with_cvss"), number(data["with_cvss"]))
+        cols[2].metric(t("vulns.with_products"), number(data["with_products"]))
+        cols[3].metric(t("vulns.with_exploit_ref"), number(data["with_exploit_reference"]))
+        cols[4].metric(t("vulns.with_exploit_code"), number(exploits["cves"]))
+        st.caption(t("vulns.as_of", date=(data["retrieved_at"] or "–")[:10]))
+
+        left, right = st.columns([3, 2])
+        with left:
+            st.subheader(t("vulns.by_year"))
+            frame = pd.DataFrame([r for r in data["by_year"] if r["year"] >= 1999])
+            st.altair_chart(
+                alt.Chart(frame).mark_bar().encode(
+                    x=alt.X("year:O", title=None, axis=alt.Axis(labelAngle=0)),
+                    y=alt.Y("cves:Q", title=None),
+                    tooltip=["year:O", "cves:Q"],
+                ),
+                width="stretch",
+            )
+            st.caption(t("vulns.by_year_help"))
+        with right:
+            st.subheader(t("vulns.by_severity"))
+            table(data["by_severity"], ["severity", "cves"])
+            st.subheader(t("vulns.providers"))
+            table(exploits["providers"], ["provider", "entries", "cves", "last_seen"])
+
+        st.subheader(t("vulns.vendors"))
+        a, b = st.columns([1, 3])
+        since = a.select_slider(t("vulns.vendors_since"), [1999, 2018, 2024, 2026], value=2018)
+        table(get("/api/v1/nvd/vendors", limit=25, since_year=since)["items"], ["vendor", "cves", "products"])
+        st.caption(t("vulns.vendors_help"))
+
+    st.subheader(t("vulns.lookup"))
+    cve = st.text_input(t("vulns.lookup"), placeholder=t("epss.lookup_hint"), label_visibility="collapsed")
+    cve = cve.strip().upper()
+    if not re.fullmatch(r"CVE-\d{4}-\d{4,7}", cve):
+        return
+    profile = get(f"/api/v1/cve/{cve}")
+    nvd, kev, epss = profile["nvd"], profile["kev"], profile["epss"]
+    if not any((nvd, kev, epss, profile["exploits"], profile["news"])):
+        st.warning(t("vulns.lookup_empty"))
+        return
+    cols = st.columns(5)
+    cols[0].metric("CVSS", "–" if not nvd or nvd["cvss_score"] is None else f"{nvd['cvss_score']:.1f}")
+    cols[1].metric("EPSS", "–" if not epss else f"{epss['epss']:.1%}")
+    cols[2].metric(t("vulns.in_kev"), t("common.yes") if kev else t("common.no"))
+    cols[3].metric(t("vulns.exploit_code"), str(len(profile["exploit_providers"])) if profile["exploit_providers"] else "–")
+    cols[4].metric(t("vulns.mentions"), str(len(profile["news"])))
+    if nvd:
+        st.write(nvd["description"])
+        facts = {
+            t("col.published"): (nvd["published"] or "")[:10],
+            t("col.cvss_severity"): nvd["cvss_severity"] or "–",
+            t("col.attack_vector"): nvd["attack_vector"] or "–",
+            t("col.cwes"): ", ".join(nvd["cwes"]) or "–",
+            t("col.vuln_status"): nvd["vuln_status"] or "–",
+            t("col.products"): ", ".join(nvd["products"][:12]) or "–",
+        }
+        st.dataframe(pd.DataFrame(facts.items(), columns=[t("vulns.field"), t("vulns.value")]),
+                     hide_index=True, width="stretch")
+    if kev:
+        st.caption(t("vulns.kev_added", date=str(kev["date_added"]), ransomware=kev["known_ransomware_campaign_use"]))
+    if profile["exploits"]:
+        st.caption(t("vulns.exploits"))
+        table(profile["exploits"], ["provider", "title", "reference_id", "provider_date", "reference_url", "first_seen_at"],
+              links=("reference_url",))
+    if profile["news"]:
+        st.caption(t("vulns.news"))
+        table(profile["news"], ["published_at", "feed_title", "title", "link"], links=("link",))
+
+
 def page_kev() -> None:
     st.header(t("nav.kev"))
     search = st.text_input(t("kev.search"))
@@ -330,4 +413,5 @@ def page_epss() -> None:
             )
 
 
-{"overview": page_overview, "pipeline": page_pipeline, "news": page_news, "kev": page_kev, "epss": page_epss}[page]()
+{"overview": page_overview, "pipeline": page_pipeline, "news": page_news,
+ "vulns": page_vulns, "kev": page_kev, "epss": page_epss}[page]()
