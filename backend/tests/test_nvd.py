@@ -184,8 +184,12 @@ def test_a_slow_api_makes_it_ask_for_smaller_pages(nvd, monkeypatch):
     assert [c["resultsPerPage"] for c in box["calls"]] == ["1000", "500"]
 
 
-def test_an_interrupted_full_download_carries_on_from_where_it_stopped(nvd):
-    settings, box, client = nvd  # page size 2
+def test_an_interrupted_full_download_carries_on_from_where_it_stopped(nvd, monkeypatch):
+    """The resume point must never run ahead of what is readable on disk."""
+    from app.sources import nvd as nvd_source
+
+    monkeypatch.setattr(nvd_source, "ROLL_EVERY", 2)
+    settings, box, client = nvd  # two records per page
     settings.nvd_max_retries = 0
     box["pages"] = [payload([record("CVE-2026-0001"), record("CVE-2026-0002")], 6)]
 
@@ -195,11 +199,16 @@ def test_an_interrupted_full_download_carries_on_from_where_it_stopped(nvd):
             return httpx.Response(200, content=box["pages"].pop(0))
         return httpx.Response(503)
 
-    settings.nvd_page_size = 2
     first = runner.run_source(settings, "nvd", client=httpx.Client(transport=httpx.MockTransport(failing)))
     assert first["status"] == "failed"
-    assert state.get_value(settings.state_db, "nvd.resume_index") == "2"
     assert state.get_value(settings.state_db, WATERMARK) is None
+
+    resume = int(state.get_value(settings.state_db, "nvd.resume_index"))
+    stored = duckdb.connect().execute(
+        "SELECT count(*) FROM read_parquet(?)", [SOURCES["nvd"].curated_files(settings)]
+    ).fetchone()[0]
+    assert resume == 2 and stored >= resume  # what it promises is really there
+    assert not list((settings.curated_dir / "nvd").glob("**/*.tmp"))
 
     box["calls"].clear()
     box["pages"] = [payload([record("CVE-2026-0003"), record("CVE-2026-0004")], 6, start=2),
@@ -213,3 +222,14 @@ def test_an_interrupted_full_download_carries_on_from_where_it_stopped(nvd):
         f"SELECT count(*) FROM ({queries.nvd_latest()})", [SOURCES["nvd"].curated_files(settings)]
     ).fetchone()[0]
     assert rows == 6
+
+
+def test_a_part_file_left_by_a_killed_process_is_cleared(nvd):
+    settings, box, client = nvd
+    folder = settings.curated_dir / "nvd" / "snapshot_date=2026-11-13"
+    folder.mkdir(parents=True)
+    (folder / "part-dead.parquet.tmp").write_bytes(b"not a parquet file")
+    box["pages"] = [payload([record("CVE-2026-0001")], 1)]
+    run = runner.run_source(settings, "nvd", client=client)
+    assert run["status"] == "success"
+    assert not list((settings.curated_dir / "nvd").glob("**/*.tmp"))

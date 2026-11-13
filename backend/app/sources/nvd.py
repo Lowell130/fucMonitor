@@ -41,6 +41,8 @@ MAX_WINDOW = timedelta(days=110)  # NVD refuses a lastModified range wider than 
 OVERLAP = timedelta(minutes=10)  # re-ask a little before the watermark, in case of clock skew
 RESUME = "nvd.resume_index"
 MIN_PAGE_SIZE = 250
+# Records per part file. Also how much a cut-short download may have to fetch again.
+ROLL_EVERY = 25_000
 CVSS_ORDER = ("cvssMetricV40", "cvssMetricV31", "cvssMetricV30", "cvssMetricV2")
 
 SCHEMA = pa.schema(
@@ -188,6 +190,8 @@ class NvdSource(Source):
             resume_from = int(state.get_value(settings.state_db, RESUME) or 0)
 
         retrieved_at = started
+        for leftover in (settings.curated_dir / self.name).glob("snapshot_date=*/*.parquet.tmp"):
+            leftover.unlink(missing_ok=True)  # a part a killed process never finished
         writer = _PartWriter(self, settings, retrieved_at)
         total = 0
         try:
@@ -250,7 +254,8 @@ class NvdSource(Source):
             writer.write(rows)
             seen += len(entries)
             start_index += len(entries) or page_size
-            if window is None:
+            # The resume point may only move once the records behind it are safely stored.
+            if window is None and writer.roll_if_due():
                 state.set_value(settings.state_db, RESUME, str(start_index))
             report(f"{min(start_index, total_results)}/{total_results} records{label}")
             if not entries or start_index >= total_results:
@@ -281,27 +286,47 @@ class NvdSource(Source):
 
 
 class _PartWriter:
-    """Writes one Parquet part file for this run, in row groups, so memory stays flat."""
+    """Writes this run's records as a series of Parquet part files.
+
+    A part is closed and renamed into place every `ROLL_EVERY` records, which is what
+    makes the resume point trustworthy: the download may only say "I got this far" for
+    records that are already on disk under their final name. A part still being written
+    carries a .tmp suffix and is ignored by every reader.
+    """
 
     def __init__(self, source: Source, settings: Settings, retrieved_at: datetime):
-        name = f"part-{retrieved_at.strftime('%Y%m%dT%H%M%S')}-{os.urandom(2).hex()}.parquet"
-        self.target = source.curated_path(settings, retrieved_at.date()).with_name(name)
-        self.tmp = self.target.with_name(name + ".tmp")
-        self.target.parent.mkdir(parents=True, exist_ok=True)
+        self.folder = source.curated_path(settings, retrieved_at.date()).parent
+        self.prefix = f"part-{retrieved_at.strftime('%Y%m%dT%H%M%S')}-{os.urandom(2).hex()}"
+        self.folder.mkdir(parents=True, exist_ok=True)
         self.writer: pq.ParquetWriter | None = None
+        self.tmp: Path | None = None
+        self.index = 0
         self.rows = 0
+        self.durable = 0
 
     def write(self, rows: list[dict]) -> None:
         if not rows:
             return
         if self.writer is None:
+            self.tmp = self.folder / f"{self.prefix}-{self.index:03d}.parquet.tmp"
             self.writer = pq.ParquetWriter(self.tmp, SCHEMA, compression="zstd")
         self.writer.write_table(pa.Table.from_pylist(rows, schema=SCHEMA))
         self.rows += len(rows)
 
-    def close(self) -> int:
+    def roll(self) -> bool:
+        """Close the current part and put it in place. True when something was written."""
         if self.writer is None:
-            return 0
+            return False
         self.writer.close()
-        os.replace(self.tmp, self.target)
+        os.replace(self.tmp, self.tmp.with_suffix(""))  # drop the .tmp suffix
+        self.writer, self.tmp = None, None
+        self.index += 1
+        self.durable = self.rows
+        return True
+
+    def roll_if_due(self) -> bool:
+        return self.roll() if self.rows - self.durable >= ROLL_EVERY else False
+
+    def close(self) -> int:
+        self.roll()
         return self.rows
