@@ -30,6 +30,13 @@ def get(path: str, **params):
     return api("GET", path, **{k: v for k, v in params.items() if v not in (None, "")})
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def get_cached(path: str, **params):
+    """For reads that scan the whole catalogue. Two minutes is short enough to follow a
+    download in progress and long enough that a rerun does not recompute everything."""
+    return get(path, **params)
+
+
 # --- language and navigation ---------------------------------------------------
 with st.sidebar:
     lang = st.selectbox(
@@ -73,11 +80,28 @@ except httpx.HTTPError:
 # --- pages ---------------------------------------------------------------------
 def page_overview() -> None:
     st.header(t("nav.overview"))
-    data = get("/api/v1/overview")
+    data = get_cached("/api/v1/overview")
     if data["kev_total"] is None and data["epss_total"] is None:
         st.info(t("common.no_data"))
         return
 
+    names = labels("technology_categories")
+    forecast = get_cached("/api/v1/analysis/forecast", horizon=90)["items"]
+    if forecast:
+        top = [f for f in forecast if f["expected"] > 0][:3]
+        if top:
+            st.subheader(t("overview.at_risk"))
+            st.caption(t("overview.at_risk_help"))
+            for column, row in zip(st.columns(len(top)), top):
+                column.metric(
+                    names.get(row["category"], row["category"]),
+                    f"{row['expected']:.1f}",
+                    help=t("overview.at_risk_metric", low=row["low"], high=row["high"],
+                           share=f"{row['share']:.1%}"),
+                )
+            st.caption(t("overview.at_risk_link"))
+
+    st.subheader(t("overview.catalogue"))
     cols = st.columns(5)
     cols[0].metric(t("overview.kev_total"), number(data["kev_total"]))
     cols[1].metric(t("overview.kev_recent"), number(data["kev_added_last_30_days"]))
@@ -89,7 +113,7 @@ def page_overview() -> None:
         f"EPSS: {t('common.as_of', date=data['epss_snapshot_date'] or '–')}"
     )
 
-    timeline = get("/api/v1/kev/timeline")["items"]
+    timeline = get_cached("/api/v1/kev/timeline")["items"]
     if timeline:
         st.subheader(t("overview.timeline"))
         frame = pd.DataFrame(timeline)
@@ -108,7 +132,7 @@ def page_overview() -> None:
 
     left, right = st.columns(2)
     with left:
-        vendors = get("/api/v1/kev/vendors", limit=15)["items"]
+        vendors = get_cached("/api/v1/kev/vendors", limit=15)["items"]
         if vendors:
             st.subheader(t("overview.vendors"))
             table(vendors, ["vendor_project", "cves", "last_added"])
@@ -132,7 +156,7 @@ def page_forecast() -> None:
     names = labels("technology_categories")
     horizon = st.radio(t("forecast.horizon"), [30, 90, 365],
                        format_func=lambda d: t("forecast.days", n=d), horizontal=True, index=1)
-    data = get("/api/v1/analysis/forecast", horizon=horizon)
+    data = get_cached("/api/v1/analysis/forecast", horizon=horizon)
     if not data["items"]:
         st.info(t("forecast.no_data"))
         return
@@ -154,7 +178,7 @@ def page_forecast() -> None:
 
     st.subheader(t("forecast.rates"))
     flat = []
-    for item in get("/api/v1/analysis/rates")["items"]:
+    for item in get_cached("/api/v1/analysis/rates")["items"]:
         stats = item["horizons"].get(str(horizon))
         if stats and stats["eligible"]:
             flat.append({"label": names.get(item["category"], item["category"]),
@@ -167,7 +191,7 @@ def page_forecast() -> None:
         st.caption(t("forecast.rates_help", n=horizon))
 
     st.subheader(t("forecast.speed"))
-    speed = get("/api/v1/analysis/time-to-exploit")["items"]
+    speed = get_cached("/api/v1/analysis/time-to-exploit")["items"]
     if speed:
         table([{**r, "label": names.get(r["category"], r["category"])} for r in speed],
               ["label", "exploited", "median_days", "p25_days", "p75_days", "share_within_7", "share_within_30"],
@@ -339,7 +363,7 @@ def page_news() -> None:
 
 def page_vulns() -> None:
     st.header(t("nav.vulns"))
-    data = get("/api/v1/nvd/overview")
+    data = get_cached("/api/v1/nvd/overview")
     exploits = get("/api/v1/exploits/overview")
     if data["total"] is None and not exploits["cves"]:
         st.info(t("vulns.no_data"))
@@ -375,7 +399,7 @@ def page_vulns() -> None:
         st.subheader(t("vulns.vendors"))
         a, b = st.columns([1, 3])
         since = a.select_slider(t("vulns.vendors_since"), [1999, 2018, 2024, 2026], value=2018)
-        table(get("/api/v1/nvd/vendors", limit=25, since_year=since)["items"], ["vendor", "cves", "products"])
+        table(get_cached("/api/v1/nvd/vendors", limit=25, since_year=since)["items"], ["vendor", "cves", "products"])
         st.caption(t("vulns.vendors_help"))
     else:
         st.warning(t("vulns.nvd_missing"))
@@ -426,7 +450,7 @@ def page_vulns() -> None:
 def page_categories() -> None:
     st.header(t("nav.categories"))
     names = labels("technology_categories")
-    coverage = get("/api/v1/categories/coverage")
+    coverage = get_cached("/api/v1/categories/coverage")
     if not coverage["products"]:
         st.info(t("categories.no_data"))
         return
@@ -444,7 +468,7 @@ def page_categories() -> None:
     st.subheader(t("categories.summary"))
     a, _ = st.columns([1, 3])
     since = a.select_slider(t("vulns.vendors_since"), [1999, 2018, 2024, 2026], value=2018)
-    rows = get("/api/v1/categories/summary", since_year=since)["items"]
+    rows = get_cached("/api/v1/categories/summary", since_year=since)["items"]
     if rows:
         frame = pd.DataFrame(rows)
         frame["label"] = frame["category"].map(lambda k: names.get(k, k))

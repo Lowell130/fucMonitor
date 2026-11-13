@@ -237,5 +237,10 @@
   "col.p25_days": "25° giorno",
   "col.p75_days": "75° giorno",
   "col.share_within_7": "Entro una settimana",
-  "col.share_within_30": "Entro un mese"
+  "col.share_within_30": "Entro un mese",
+  "overview.at_risk": "Più a rischio nei prossimi 90 giorni",
+  "overview.at_risk_help": "Vulnerabilità che ci si attende risultino sfruttate, per categoria tecnologica.",
+  "overview.at_risk_metric": "Fra {low} e {high}. Storicamente il {share} delle vulnerabilità di questa categoria viene sfruttato entro 90 giorni.",
+  "overview.at_risk_link": "La sezione Previsioni mostra tutte le categorie, come sono costruiti i numeri e cosa non dicono.",
+  "overview.catalogue": "Cosa contiene il catalogo"
 }

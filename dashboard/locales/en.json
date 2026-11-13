@@ -237,5 +237,10 @@
   "col.p25_days": "25th day",
   "col.p75_days": "75th day",
   "col.share_within_7": "Within a week",
-  "col.share_within_30": "Within a month"
+  "col.share_within_30": "Within a month",
+  "overview.at_risk": "Most at risk in the next 90 days",
+  "overview.at_risk_help": "Vulnerabilities expected to become known-exploited, by technology category.",
+  "overview.at_risk_metric": "Between {low} and {high}. Historically {share} of this category's vulnerabilities are exploited within 90 days.",
+  "overview.at_risk_link": "The Forecast section shows every category, how the numbers are built and what they do not say.",
+  "overview.catalogue": "What the catalogue holds"
 }

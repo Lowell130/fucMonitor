@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 APP = str(Path(__file__).resolve().parents[1] / "app.py")
@@ -145,6 +146,7 @@ def test_page_renders(monkeypatch, responses, lang, page):
         return httpx.Response(200, json=responses[path], request=httpx.Request(method, url))
 
     monkeypatch.setattr(httpx, "request", fake)
+    st.cache_data.clear()  # the app caches reads: one case must not answer for another
     at = AppTest.from_file(APP, default_timeout=30)
     at.session_state["lang"] = lang
     at.run()
@@ -160,5 +162,6 @@ def test_api_down_shows_a_message_instead_of_a_traceback(monkeypatch):
         raise httpx.ConnectError("refused")
 
     monkeypatch.setattr(httpx, "request", boom)
+    st.cache_data.clear()
     at = AppTest.from_file(APP, default_timeout=30).run()
     assert not at.exception and len(at.error) == 1
