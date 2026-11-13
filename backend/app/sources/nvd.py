@@ -44,8 +44,8 @@ OVERLAP = timedelta(minutes=10)  # re-ask a little before the watermark, in case
 RESUME = "nvd.resume_index"
 log = logging.getLogger("fucmonitor.nvd")
 MIN_PAGE_SIZE = 250
-# Records per part file. Also how much a cut-short download may have to fetch again.
-ROLL_EVERY = 25_000
+# Records per part file, and the most a cut-short download has to fetch again.
+ROLL_EVERY = 10_000
 CVSS_ORDER = ("cvssMetricV40", "cvssMetricV31", "cvssMetricV30", "cvssMetricV2")
 
 SCHEMA = pa.schema(

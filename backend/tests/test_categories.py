@@ -140,3 +140,23 @@ def test_a_cve_profile_carries_its_categories(catalogue):
         profile = api.get("/api/v1/cve/CVE-2026-0005").json()
         assert profile["categories"] == ["operating_system"]  # gizmotron is unmapped
         assert api.get("/api/v1/cve/CVE-2026-0002").json()["categories"] == ["firewall_security_appliance"]
+
+
+@pytest.mark.parametrize(
+    "product, category",
+    [
+        # gaps the review queue showed on the real catalogue
+        ("microsoft:internet_explorer", "browser_client"),
+        ("microsoft:open_xml_file_format_converter", "browser_client"),
+        ("adobe:air", "browser_client"),
+        ("apple:quicktime", "browser_client"),
+        ("oracle:solaris", "operating_system"),
+        ("sun:jdk", "operating_system"),
+        ("cpanel:cpanel", "remote_management"),
+        ("hp:openview_network_node_manager", "remote_management"),
+        ("al-enterprise:omnipcx_enterprise_communication_server", "router_network_edge"),
+        ("phpbb:phpbb", "web_cms"),
+    ],
+)
+def test_rules_cover_what_the_queue_turned_up(product, category):
+    assert mapping.classify(product)[0] == category
