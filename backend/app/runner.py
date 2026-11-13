@@ -105,11 +105,10 @@ def run_all(
     only_if_missing_today: bool = False,
     cadence: str = "daily",
 ) -> None:
-    today = state.utcnow().date()
     for name, source in SOURCES.items():
         if source.cadence != cadence:
             continue
-        if only_if_missing_today and today in source.snapshot_dates(settings):
+        if only_if_missing_today and not source.needs_run(settings):
             continue
         try:
             run_source(settings, name, trigger)

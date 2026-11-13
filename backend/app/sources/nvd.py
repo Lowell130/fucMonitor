@@ -178,6 +178,13 @@ class NvdSource(Source):
     title = "NVD CVE records (NIST)"
     homepage = "https://nvd.nist.gov/developers/vulnerabilities"
 
+    def needs_run(self, settings: Settings) -> bool:
+        """Today's partition can exist while the catalogue is still half downloaded, so an
+        unfinished full download counts as due even when files for today are present."""
+        if int(state.get_value(settings.state_db, RESUME) or 0):
+            return True
+        return super().needs_run(settings)
+
     def ingest(self, settings: Settings, client: httpx.Client, progress=None) -> IngestResult:
         report = progress or (lambda _message: None)
         watermark = state.get_value(settings.state_db, WATERMARK)

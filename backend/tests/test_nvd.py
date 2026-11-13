@@ -252,3 +252,28 @@ def test_a_resume_point_beyond_the_stored_records_is_not_trusted(nvd, monkeypatc
     run = runner.run_source(settings, "nvd", client=client)
     assert run["status"] == "success"
     assert box["calls"][0]["startIndex"] == "0"  # back to the beginning, no silent gap
+
+
+def test_an_unfinished_download_is_picked_up_again_at_startup(nvd, monkeypatch):
+    from app.sources import nvd as nvd_source
+
+    monkeypatch.setattr(nvd_source, "ROLL_EVERY", 2)
+    settings, box, client = nvd
+    source = SOURCES["nvd"]
+    assert source.needs_run(settings) is True
+
+    box["pages"] = [payload([record("CVE-2026-0001"), record("CVE-2026-0002")], 6)]
+
+    def failing(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=box["pages"].pop(0)) if box["pages"] else httpx.Response(503)
+
+    settings.nvd_max_retries = 0
+    runner.run_source(settings, "nvd", client=httpx.Client(transport=httpx.MockTransport(failing)))
+    # Today has a partition, but the catalogue is only part way down: still due.
+    assert source.snapshot_dates(settings) == [state.utcnow().date()]
+    assert source.needs_run(settings) is True
+
+    box["pages"] = [payload([record("CVE-2026-0003"), record("CVE-2026-0004")], 6, start=2),
+                    payload([record("CVE-2026-0005"), record("CVE-2026-0006")], 6, start=4)]
+    assert runner.run_source(settings, "nvd", client=client)["status"] == "success"
+    assert source.needs_run(settings) is False

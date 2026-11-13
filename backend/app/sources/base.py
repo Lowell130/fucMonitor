@@ -65,6 +65,12 @@ class Source:
                 continue
         return sorted(found)
 
+    def needs_run(self, settings: Settings) -> bool:
+        """Whether a catch-up run is due. By default, when today has no snapshot yet."""
+        from ..state import utcnow
+
+        return utcnow().date() not in self.snapshot_dates(settings)
+
     def curated_files(self, settings: Settings) -> list[str]:
         """Every stored file, oldest day first. Pass it straight to read_parquet."""
         root = settings.curated_dir / self.name
