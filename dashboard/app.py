@@ -49,7 +49,7 @@ def table(rows: list[dict], columns: list[str], percent: tuple[str, ...] = (), l
     config = {c: st.column_config.Column(t(f"col.{c}")) for c in columns}
     for c in percent:
         frame[c] = frame[c] * 100
-        config[c] = st.column_config.NumberColumn(t(f"col.{c}"), format="%.2f%%")
+        config[c] = st.column_config.NumberColumn(t(f"col.{c}"), format="%.3f%%")
     for c in links:
         frame[c] = frame[c].replace("", None)
         config[c] = st.column_config.LinkColumn(t(f"col.{c}"), display_text=t("common.open"))
@@ -120,7 +120,7 @@ def page_overview() -> None:
             n = ke["kev_cves"]
             a, b = st.columns(2)
             median = ke["median_epss"]
-            a.metric(t("overview.kev_epss_median"), "–" if median is None else f"{median:.1%}")
+            a.metric(t("overview.kev_epss_median"), "–" if median is None else percent(median))
             b.metric(t("overview.kev_epss_high"), f"{ke['epss_ge_10pct'] / n:.0%}")
             a.metric(t("overview.kev_epss_low"), f"{ke['epss_lt_1pct'] / n:.0%}")
             b.metric(t("overview.kev_epss_missing"), number(n - ke["with_epss"]))
@@ -181,6 +181,11 @@ def page_pipeline() -> None:
         get("/api/v1/jobs", limit=100)["items"],
         ["source", "trigger", "status", "started_at", "finished_at", "snapshot_date", "rows", "changed", "message"],
     )
+
+
+def percent(value: float) -> str:
+    """EPSS runs to five decimals: 0.99999 is not 100%, and saying so would be wrong."""
+    return f"{value * 100:.3f}".rstrip("0").rstrip(".") + "%"
 
 
 def number(value) -> str:
@@ -340,7 +345,7 @@ def page_vulns() -> None:
         return
     cols = st.columns(5)
     cols[0].metric("CVSS", "–" if not nvd or nvd["cvss_score"] is None else f"{nvd['cvss_score']:.1f}")
-    cols[1].metric("EPSS", "–" if not epss else f"{epss['epss']:.1%}")
+    cols[1].metric("EPSS", "–" if not epss else percent(epss["epss"]))
     cols[2].metric(t("vulns.in_kev"), t("common.yes") if kev else t("common.no"))
     cols[3].metric(t("vulns.exploit_code"), str(len(profile["exploit_providers"])) if profile["exploit_providers"] else "–")
     cols[4].metric(t("vulns.mentions"), str(len(profile["news"])))
