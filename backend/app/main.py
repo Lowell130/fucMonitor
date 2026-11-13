@@ -16,6 +16,7 @@ from . import queries, runner, state
 from .config import get_settings
 from .sources import SOURCES
 from .sources.news import load_feeds
+from .analysis import exploitation
 from .taxonomy import mapping
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -332,6 +333,32 @@ def clear_product_category(product: str) -> dict:
 @app.post("/api/v1/categories/rebuild", tags=["categories"])
 def rebuild_categories() -> dict:
     return {"products": runner.refresh_categories(get_settings(), force=True) or 0}
+
+
+@app.get("/api/v1/analysis/rates", tags=["analysis"])
+def exploitation_rates(since_year: int | None = Query(None, ge=1999, le=2100)) -> dict:
+    """Share of vulnerabilities exploited within 30, 90 and 365 days, per category.
+    Only CVEs old enough to have had that time are counted."""
+    return exploitation.rates(get_settings(), since_year)
+
+
+@app.get("/api/v1/analysis/time-to-exploit", tags=["analysis"])
+def time_to_exploit(since_year: int | None = Query(2018, ge=1999, le=2100)) -> dict:
+    """Days between publication and confirmed exploitation, over the CVEs that were exploited."""
+    return exploitation.time_to_exploit(get_settings(), since_year)
+
+
+@app.get("/api/v1/analysis/forecast", tags=["analysis"])
+def exploitation_forecast(
+    horizon: int = Query(90, description="Days ahead: 30, 90 or 365"),
+    lookback_days: int = Query(365, ge=90, le=1825),
+) -> dict:
+    """Expected newly exploited vulnerabilities per category. A baseline, not a model:
+    recent publication volume times the historical rate, with an interval."""
+    try:
+        return exploitation.forecast(get_settings(), horizon, lookback_days)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @app.get("/api/v1/taxonomy", tags=["data"])

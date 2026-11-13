@@ -76,6 +76,17 @@ FULL = {
                                     "cves": 250000, "cves_mapped": 190000, "kev_cves": 1700,
                                     "kev_cves_mapped": 1600, "recent_cves": 80000,
                                     "recent_cves_mapped": 60000, "rules_version": "2026.11.13-1+12"},
+    "/api/v1/analysis/forecast": {"horizon": 90, "lookback_days": 365, "generated_for": "2026-11-13", "items": [
+        {"category": "firewall_security_appliance", "expected": 3.4, "low": 1.1, "high": 7.2,
+         "recent_cves": 120, "expected_new_cves": 29.6, "share": 0.11, "share_low": 0.05,
+         "share_high": 0.2, "based_on_exploited": 11, "based_on_eligible": 100}]},
+    "/api/v1/analysis/rates": {"horizons": [30, 90, 365], "items": [
+        {"category": "firewall_security_appliance", "horizons": {"90": {
+            "eligible": 100, "exploited": 11, "share": 0.11, "share_low": 0.05,
+            "share_high": 0.2, "median_days": 12}}}]},
+    "/api/v1/analysis/time-to-exploit": {"items": [
+        {"category": "firewall_security_appliance", "exploited": 11, "median_days": 12, "p25_days": 3,
+         "p75_days": 40, "within_7": 4, "within_30": 8, "share_within_7": 0.36, "share_within_30": 0.72}]},
     "/api/v1/categories/summary": {"items": [
         {"category": "web_cms", "cves": 50000, "kev_cves": 300, "kev_share": 0.006,
          "recent_cves": 20000, "last_published": "2026-11-12"},
@@ -109,6 +120,9 @@ EMPTY = {
     "/api/v1/categories/coverage": {"products": 0, "products_mapped": 0, "products_manual": 0, "cves": 0,
                                     "cves_mapped": 0, "kev_cves": 0, "kev_cves_mapped": 0,
                                     "recent_cves": 0, "recent_cves_mapped": 0, "rules_version": None},
+    "/api/v1/analysis/forecast": {"horizon": 90, "lookback_days": 365, "generated_for": None, "items": []},
+    "/api/v1/analysis/rates": {"horizons": [30, 90, 365], "items": []},
+    "/api/v1/analysis/time-to-exploit": {"items": []},
     "/api/v1/categories/summary": {"items": []},
     "/api/v1/categories/products": {"total": 0, "items": []},
     "/api/v1/exploits/overview": {"cves": 0, "providers": []},
@@ -124,7 +138,7 @@ EMPTY = {
 
 @pytest.mark.parametrize("responses", [FULL, EMPTY], ids=["full", "empty"])
 @pytest.mark.parametrize("lang", ["en", "it"])
-@pytest.mark.parametrize("page", ["overview", "pipeline", "news", "vulns", "categories", "kev", "epss"])
+@pytest.mark.parametrize("page", ["overview", "forecast", "pipeline", "news", "vulns", "categories", "kev", "epss"])
 def test_page_renders(monkeypatch, responses, lang, page):
     def fake(method, url, params=None, json=None, timeout=None):
         path = httpx.URL(url).path
@@ -137,7 +151,7 @@ def test_page_renders(monkeypatch, responses, lang, page):
     at.sidebar.radio[0].set_value(page).run()
     assert not at.exception, at.exception
     visible = " ".join(str(e.value) for e in [*at.header, *at.subheader, *at.caption, *at.info])
-    for prefix in ("nav.", "overview.", "pipeline.", "common.", "epss.", "kev.", "app.", "news.", "kind.", "vulns.", "categories.", "assigned."):
+    for prefix in ("nav.", "overview.", "pipeline.", "common.", "epss.", "kev.", "app.", "news.", "kind.", "vulns.", "categories.", "assigned.", "forecast."):
         assert prefix not in visible, visible
 
 

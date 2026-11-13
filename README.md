@@ -85,6 +85,22 @@ sezione "Categorie tecnologiche" della dashboard mostra la copertura e una coda 
 i prodotti che nessuna regola ha riconosciuto, ordinati per quanto pesano (prima quelli dietro
 a vulnerabilità già sfruttate). Sistemare i primi cambia i numeri più di tutti gli altri insieme.
 
+## Previsioni
+
+La pagina "Previsioni" risponde alla domanda di partenza — cosa potrebbe essere colpito e
+quando — con una base di confronto deliberatamente semplice, non con un modello:
+
+- **Quanto spesso accade**: la quota di vulnerabilità sfruttate entro 30, 90 o 365 giorni dalla
+  pubblicazione, per categoria. Si contano solo le CVE abbastanza vecchie da avere avuto quel
+  tempo, altrimenti le più recenti abbasserebbero la quota solo per non averne ancora avuto l'occasione.
+- **Quanto in fretta**: i giorni fra pubblicazione e sfruttamento confermato, calcolati solo
+  sulle vulnerabilità effettivamente sfruttate.
+- **Attese nei prossimi N giorni**: il volume recente di CVE della categoria per il tasso storico,
+  con un intervallo che mostra quanto poco dica un numero piccolo di casi.
+
+Lo sfruttamento è datato all'inserimento in CISA KEV: più tardi dell'inizio reale e parziale,
+quindi ogni numero è un minimo. La pagina lo dice, insieme agli altri limiti.
+
 ## Notizie e avvisi
 
 Ogni ora il backend legge i feed RSS elencati in `backend/app/sources/feeds.json`: avvisi

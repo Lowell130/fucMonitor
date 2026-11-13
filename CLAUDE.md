@@ -28,6 +28,9 @@ Local, zero-cost app that forecasts which technology categories will be exploite
 - `backend/app/taxonomy/mapping.py` + `rules.json`: product (`vendor:product`) to technology
   category. Manual assignments live in the `product_category` table and always beat the rules.
   Derived table rebuilt whenever rules, catalogue or a manual decision changes.
+- `backend/app/analysis/exploitation.py`: historical exploitation rates per category and the
+  baseline forecast. Every rate is censored by horizon: only CVEs old enough to have had H days
+  are counted. Intervals are Wilson (shares) and Byar/Poisson (counts), no new dependency.
 - `backend/app/enrich/news.py` + `rules.json`: derived news labels (event type, exploitation signal,
   claim status, sectors, stories). Raw items are never changed; `derived/` can be deleted and rebuilt.
   Bump `version` in `rules.json` on every rule change.

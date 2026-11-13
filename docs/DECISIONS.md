@@ -56,6 +56,9 @@ Fatto:
 - Mappatura prodotto → categoria tecnologica: regole a parole chiave, assegnazioni manuali
   prioritarie e coda di revisione ordinata per impatto.
 
+- Tassi storici di sfruttamento per categoria (30/90/365 giorni, con censura corretta),
+  tempo allo sfruttamento e previsione di base volume × tasso con intervalli.
+
 Limiti noti delle notizie:
 
 - Le regole sono semplici e sbagliano su una parte degli elementi. Ogni etichetta riporta la versione delle regole.
@@ -66,6 +69,6 @@ Prossimi passi, in ordine:
 
 1. Notizie: raggruppamento multilingue e verifica a campione della qualità delle regole.
 2. Revisione manuale della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
-3. Dataset a livello CVE con feature point-in-time, baseline e primo modello, confronto con EPSS.
+3. Dataset a livello CVE con feature point-in-time e primo modello, da confrontare con questa base e con EPSS.
 4. Aggregazione per categoria e pagina Previsioni.
 5. Segnali live, poi frontend React.

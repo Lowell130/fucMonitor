@@ -15,7 +15,7 @@ import streamlit as st
 from i18n import LANGUAGES, translate
 
 API_URL = os.environ.get("FUC_API_URL", "http://localhost:8000").rstrip("/")
-PAGES = ["overview", "pipeline", "news", "vulns", "categories", "kev", "epss"]
+PAGES = ["overview", "forecast", "pipeline", "news", "vulns", "categories", "kev", "epss"]
 
 st.set_page_config(page_title="fucMonitor", page_icon="📈", layout="wide")
 
@@ -125,6 +125,57 @@ def page_overview() -> None:
             a.metric(t("overview.kev_epss_low"), f"{ke['epss_lt_1pct'] / n:.0%}")
             b.metric(t("overview.kev_epss_missing"), number(n - ke["with_epss"]))
             st.caption(t("overview.kev_epss_help"))
+
+
+def page_forecast() -> None:
+    st.header(t("nav.forecast"))
+    names = labels("technology_categories")
+    horizon = st.radio(t("forecast.horizon"), [30, 90, 365],
+                       format_func=lambda d: t("forecast.days", n=d), horizontal=True, index=1)
+    data = get("/api/v1/analysis/forecast", horizon=horizon)
+    if not data["items"]:
+        st.info(t("forecast.no_data"))
+        return
+
+    st.caption(t("forecast.method", horizon=horizon, lookback=data["lookback_days"] // 30))
+    rows = [{**r, "label": names.get(r["category"], r["category"])} for r in data["items"]]
+    frame = pd.DataFrame(rows)
+    base = alt.Chart(frame).encode(y=alt.Y("label:N", title=None, sort="-x"))
+    st.altair_chart(
+        (base.mark_bar().encode(
+            x=alt.X("expected:Q", title=t("forecast.axis", n=horizon)),
+            tooltip=[alt.Tooltip("label:N", title=""), "expected:Q", "low:Q", "high:Q", "recent_cves:Q"])
+         + base.mark_rule(strokeWidth=2, color="#888").encode(x="low:Q", x2="high:Q")),
+        width="stretch",
+    )
+    table(rows, ["label", "expected", "low", "high", "recent_cves", "share",
+                 "based_on_exploited", "based_on_eligible"], percent=("share",))
+    st.caption(t("forecast.table_help"))
+
+    st.subheader(t("forecast.rates"))
+    flat = []
+    for item in get("/api/v1/analysis/rates")["items"]:
+        stats = item["horizons"].get(str(horizon))
+        if stats and stats["eligible"]:
+            flat.append({"label": names.get(item["category"], item["category"]),
+                         "share": stats["share"], "share_low": stats["share_low"],
+                         "share_high": stats["share_high"], "exploited": stats["exploited"],
+                         "eligible": stats["eligible"], "median_days": stats["median_days"]})
+    if flat:
+        table(flat, ["label", "share", "share_low", "share_high", "exploited", "eligible", "median_days"],
+              percent=("share", "share_low", "share_high"))
+        st.caption(t("forecast.rates_help", n=horizon))
+
+    st.subheader(t("forecast.speed"))
+    speed = get("/api/v1/analysis/time-to-exploit")["items"]
+    if speed:
+        table([{**r, "label": names.get(r["category"], r["category"])} for r in speed],
+              ["label", "exploited", "median_days", "p25_days", "p75_days", "share_within_7", "share_within_30"],
+              percent=("share_within_7", "share_within_30"))
+        st.caption(t("forecast.speed_help"))
+
+    with st.expander(t("forecast.limits")):
+        st.markdown(t("forecast.limits_text"))
 
 
 def page_pipeline() -> None:
@@ -498,5 +549,6 @@ def page_epss() -> None:
             )
 
 
-{"overview": page_overview, "pipeline": page_pipeline, "news": page_news, "vulns": page_vulns,
- "categories": page_categories, "kev": page_kev, "epss": page_epss}[page]()
+{"overview": page_overview, "forecast": page_forecast, "pipeline": page_pipeline,
+ "news": page_news, "vulns": page_vulns, "categories": page_categories,
+ "kev": page_kev, "epss": page_epss}[page]()
