@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 import threading
 from contextlib import asynccontextmanager
 from datetime import date
@@ -138,15 +139,27 @@ def backfill_epss(
     background: BackgroundTasks,
     start: date = Query(..., description="First day, YYYY-MM-DD"),
     end: date = Query(..., description="Last day, inclusive"),
+    step: int = Query(1, ge=1, le=30, description="Days between files: 1 daily, 7 weekly"),
 ) -> dict:
-    """Download historical EPSS days that are not stored yet. One request per day, in order."""
-    days = (end - start).days + 1
-    if days < 1 or days > 400:
-        raise HTTPException(422, "The range must cover between 1 and 400 days")
+    """Download historical EPSS days that are not stored yet, oldest first.
+
+    A step above 1 thins out the distant past: EPSS scores move slowly, so one file a week
+    carries most of the signal for a fraction of the disk. Recent history deserves step 1.
+    """
+    if end < start:
+        raise HTTPException(422, "The end date must not be before the start date")
+    wanted = [
+        date.fromordinal(day)
+        for day in range(start.toordinal(), end.toordinal() + 1, step)
+    ]
+    if len(wanted) > 500:
+        raise HTTPException(
+            422, f"That is {len(wanted)} files; ask for at most 500 at a time (raise the step, or split the range)"
+        )
     have = set(SOURCES["epss"].snapshot_dates(get_settings()))
-    todo = [d for d in (date.fromordinal(start.toordinal() + i) for i in range(days)) if d not in have]
+    todo = [day for day in wanted if day not in have]
     background.add_task(_backfill, todo)
-    return {"accepted": True, "days_requested": days, "days_to_download": len(todo)}
+    return {"accepted": True, "days_requested": len(wanted), "days_to_download": len(todo), "step": step}
 
 
 def _run_quietly(name: str, day: date | None) -> None:
@@ -157,7 +170,10 @@ def _run_quietly(name: str, day: date | None) -> None:
 
 
 def _backfill(days: list[date]) -> None:
-    for day in days:
+    settings = get_settings()
+    for index, day in enumerate(days):
+        if index:
+            time.sleep(settings.epss_backfill_delay_seconds)
         _run_quietly("epss", day)
 
 

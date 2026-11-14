@@ -41,7 +41,7 @@
   "pipeline.never": "mai",
   "pipeline.history": "Storico delle esecuzioni",
   "pipeline.backfill": "Recupero dello storico EPSS",
-  "pipeline.backfill_help": "Scarica i giorni mancanti nell'intervallo, un file per giorno (circa 2 MB ciascuno).",
+  "pipeline.backfill_help": "Scarica i giorni mancanti nell'intervallo, un file per passo (circa 2 MB ciascuno), dal più vecchio. EPSS risale al 14 aprile 2021. I punteggi si muovono lentamente, quindi per il passato lontano un file a settimana basta; per i mesi recenti conviene uno al giorno.",
   "pipeline.backfill_from": "Dal",
   "pipeline.backfill_to": "Al",
   "pipeline.backfill_run": "Avvia il recupero",
@@ -242,5 +242,8 @@
   "overview.at_risk_help": "Vulnerabilità che ci si attende risultino sfruttate, per categoria tecnologica.",
   "overview.at_risk_metric": "Fra {low} e {high}. Storicamente il {share} delle vulnerabilità di questa categoria viene sfruttato entro 90 giorni.",
   "overview.at_risk_link": "La sezione Previsioni mostra tutte le categorie, come sono costruiti i numeri e cosa non dicono.",
-  "overview.catalogue": "Cosa contiene il catalogo"
+  "overview.catalogue": "Cosa contiene il catalogo",
+  "pipeline.backfill_step": "Un file ogni",
+  "pipeline.backfill_daily": "giorno",
+  "pipeline.backfill_weekly": "settimana"
 }

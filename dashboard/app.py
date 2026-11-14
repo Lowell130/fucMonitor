@@ -240,13 +240,19 @@ def page_pipeline() -> None:
     with st.expander(t("pipeline.backfill")):
         st.caption(t("pipeline.backfill_help"))
         today = date.today()
-        a, b, c = st.columns([2, 2, 1])
-        start = a.date_input(t("pipeline.backfill_from"), today - timedelta(days=30), max_value=today)
-        end = b.date_input(t("pipeline.backfill_to"), today - timedelta(days=1), max_value=today)
-        c.write("")
-        if c.button(t("pipeline.backfill_run")):
+        a, b, c, d = st.columns([2, 2, 2, 1])
+        start = a.date_input(t("pipeline.backfill_from"), today - timedelta(days=30),
+                             min_value=date(2021, 4, 14), max_value=today)
+        end = b.date_input(t("pipeline.backfill_to"), today - timedelta(days=1),
+                           min_value=date(2021, 4, 14), max_value=today)
+        step = c.radio(t("pipeline.backfill_step"), [1, 7],
+                       format_func=lambda n: t("pipeline.backfill_daily" if n == 1 else "pipeline.backfill_weekly"),
+                       horizontal=True)
+        d.write("")
+        if d.button(t("pipeline.backfill_run")):
             try:
-                out = api("POST", "/api/v1/sources/epss/backfill", start=str(start), end=str(end))
+                out = api("POST", "/api/v1/sources/epss/backfill",
+                          start=str(start), end=str(end), step=step)
                 st.toast(t("pipeline.backfill_started", n=out["days_to_download"]))
             except httpx.HTTPStatusError as exc:
                 st.error(exc.response.json().get("detail", str(exc)))

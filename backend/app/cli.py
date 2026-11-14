@@ -3,6 +3,7 @@
     python -m app.cli ingest            # all sources
     python -m app.cli ingest kev
     python -m app.cli backfill-epss 2026-10-01 2026-10-31
+    python -m app.cli backfill-epss 2021-04-14 2025-11-01 --step 7
 """
 
 import argparse
@@ -22,6 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     backfill = sub.add_parser("backfill-epss", help="Download historical EPSS days")
     backfill.add_argument("start", type=date.fromisoformat)
     backfill.add_argument("end", type=date.fromisoformat)
+    backfill.add_argument("--step", type=int, default=1, help="Days between files: 1 daily, 7 weekly")
     args = parser.parse_args(argv)
 
     settings = get_settings()
@@ -33,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
             failed |= run["status"] != "success"
     else:
         have = set(SOURCES["epss"].snapshot_dates(settings))
-        for n in range(args.start.toordinal(), args.end.toordinal() + 1):
+        for n in range(args.start.toordinal(), args.end.toordinal() + 1, max(1, args.step)):
             day = date.fromordinal(n)
             if day in have:
                 continue

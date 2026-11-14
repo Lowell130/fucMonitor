@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     epss_url: str = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
     # Template for one historical day, used by the backfill. {date} = YYYY-MM-DD.
     epss_dated_url: str = "https://epss.empiricalsecurity.com/epss_scores-{date}.csv.gz"
+    # Pause between the files of a historical backfill. Hundreds of requests in a row to
+    # somebody else's server deserve a gap, and nothing here is in a hurry.
+    epss_backfill_delay_seconds: float = 1.0
 
     # --- NVD -----------------------------------------------------------------
     nvd_url: str = "https://services.nvd.nist.gov/rest/json/cves/2.0"

@@ -129,6 +129,10 @@ sezione Pipeline, "Recupero dello storico EPSS", oppure:
 docker compose exec backend python -m app.cli backfill-epss 2026-10-01 2026-10-31
 ```
 
+Il passo decide quanti file scaricare: uno al giorno per i mesi recenti, uno a settimana per il
+passato lontano. I punteggi EPSS si muovono lentamente, quindi la settimana costa un settimo del
+disco e perde poco. Cinque anni a passo settimanale sono circa 290 file.
+
 L'indirizzo dei file storici è impostato in `FUC_EPSS_DATED_URL`. Se il recupero fallisce con
 un errore 404, controlla l'indirizzo attuale su https://www.first.org/epss/data e mettilo in `.env`.
 

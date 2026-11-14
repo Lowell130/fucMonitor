@@ -41,7 +41,7 @@
   "pipeline.never": "never",
   "pipeline.history": "Run history",
   "pipeline.backfill": "EPSS history backfill",
-  "pipeline.backfill_help": "Downloads the days that are missing in the range, one file per day (about 2 MB each).",
+  "pipeline.backfill_help": "Downloads the days missing from the range, one file per step (about 2 MB each), oldest first. EPSS goes back to 14 April 2021. Scores move slowly, so one file a week is usually enough for the distant past; keep one a day for recent months.",
   "pipeline.backfill_from": "From",
   "pipeline.backfill_to": "To",
   "pipeline.backfill_run": "Start backfill",
@@ -242,5 +242,8 @@
   "overview.at_risk_help": "Vulnerabilities expected to become known-exploited, by technology category.",
   "overview.at_risk_metric": "Between {low} and {high}. Historically {share} of this category's vulnerabilities are exploited within 90 days.",
   "overview.at_risk_link": "The Forecast section shows every category, how the numbers are built and what they do not say.",
-  "overview.catalogue": "What the catalogue holds"
+  "overview.catalogue": "What the catalogue holds",
+  "pipeline.backfill_step": "One file every",
+  "pipeline.backfill_daily": "day",
+  "pipeline.backfill_weekly": "week"
 }

@@ -93,3 +93,29 @@ def test_overview_joins_kev_and_epss(settings, client):
     assert out["kev_epss"]["kev_cves"] == 3 and out["kev_epss"]["with_epss"] == 2
     top = queries.epss_top(settings, 2)["items"]
     assert [(i["cve_id"], i["in_kev"]) for i in top] == [("CVE-2024-0001", True), ("CVE-2021-9999", False)]
+
+
+def test_backfill_asks_for_one_file_per_step(settings, monkeypatch):
+    """A weekly step over years must not blow past the per-request limit."""
+    from fastapi.testclient import TestClient
+
+    from app import main
+
+    asked: list[list] = []
+    # The endpoint hands the work to a background task; let it record instead of download.
+    monkeypatch.setattr(main, "_backfill", asked.append)
+
+    with TestClient(main.app) as api:
+        weekly = api.post(
+            "/api/v1/sources/epss/backfill", params={"start": "2021-04-14", "end": "2026-11-01", "step": 7}
+        )
+        assert weekly.status_code == 202
+        assert weekly.json() == {"accepted": True, "days_requested": 290, "days_to_download": 290, "step": 7}
+        assert len(asked[0]) == 290
+        assert (asked[0][1] - asked[0][0]).days == 7 and asked[0][0].isoformat() == "2021-04-14"
+
+        daily = api.post("/api/v1/sources/epss/backfill", params={"start": "2021-04-14", "end": "2026-11-01"})
+        assert daily.status_code == 422 and "500" in daily.json()["detail"]
+
+        backwards = api.post("/api/v1/sources/epss/backfill", params={"start": "2026-02-01", "end": "2026-01-01"})
+        assert backwards.status_code == 422
