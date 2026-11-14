@@ -136,6 +136,18 @@ disco e perde poco. Cinque anni a passo settimanale sono circa 290 file.
 L'indirizzo dei file storici è impostato in `FUC_EPSS_DATED_URL`. Se il recupero fallisce con
 un errore 404, controlla l'indirizzo attuale su https://www.first.org/epss/data e mettilo in `.env`.
 
+## Controllo di integrità
+
+Un file Parquet troncato (un container fermato a metà scrittura, per esempio) fa fallire ogni
+query su quella fonte senza dire quale file sia. Da qui si trova e si rimuove:
+
+```
+curl -X POST "http://localhost:8000/api/v1/maintenance/verify"              # elenca
+curl -X POST "http://localhost:8000/api/v1/maintenance/verify?repair=true"  # rimuove
+```
+
+I file rimossi si riscaricano: EPSS con il backfill, le altre fonti alla raccolta successiva.
+
 ## Comandi utili
 
 ```

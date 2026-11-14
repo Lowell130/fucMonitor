@@ -17,7 +17,7 @@ import httpx
 
 from ..config import Settings
 from ..state import iso, utcnow
-from .base import IngestResult, Source, download, sha256
+from .base import IngestResult, Source, download, promote, sha256
 
 _SCORE_DATE = re.compile(r"score_date:(\d{4}-\d{2}-\d{2})")
 _MODEL = re.compile(r"model_version:([^,\s]+)")
@@ -119,5 +119,5 @@ class EpssSource(Source):
         if rows == 0:
             tmp.unlink(missing_ok=True)
             raise ValueError("EPSS file parsed to zero rows; refusing to store an empty snapshot")
-        os.replace(tmp, target)
+        promote(tmp, target)
         return IngestResult(snapshot, rows, len(content), digest, True, "stored")

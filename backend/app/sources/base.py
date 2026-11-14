@@ -115,6 +115,23 @@ class Source:
         return path
 
 
+def promote(tmp: Path, target: Path) -> None:
+    """Put a freshly written Parquet file in its place, once it reads back.
+
+    Checking the footer costs microseconds and catches a file truncated by a crash or by
+    a container stopped mid-write. A broken file is worse than a missing one: every query
+    that reads the whole set fails, and nothing says which file is at fault.
+    """
+    import pyarrow.parquet as pq
+
+    try:
+        pq.read_metadata(tmp)
+    except Exception as exc:  # noqa: BLE001
+        tmp.unlink(missing_ok=True)
+        raise ValueError(f"{tmp.name} was written unreadable and has been discarded: {exc}") from exc
+    os.replace(tmp, target)
+
+
 def sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 

@@ -18,7 +18,7 @@ import pyarrow.parquet as pq
 
 from ..config import Settings
 from ..state import utcnow
-from .base import IngestResult, Source, download, sha256
+from .base import IngestResult, Source, download, promote, sha256
 
 SCHEMA = pa.schema(
     [
@@ -98,5 +98,5 @@ class KevSource(Source):
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name("data.parquet.tmp")
         pq.write_table(table, tmp, compression="zstd")
-        os.replace(tmp, target)
+        promote(tmp, target)
         return IngestResult(snapshot, table.num_rows, len(content), digest, True, "stored")

@@ -156,3 +156,42 @@ def test_a_file_without_the_expected_columns_is_refused(settings, client, feeds)
     feeds["epss"] = gzip.compress(b"something,else\n1,2\n")
     run = runner.run_source(settings, "epss", client=client)
     assert run["status"] == "failed" and "unexpected EPSS columns" in run["message"]
+
+
+def test_a_file_that_cannot_be_read_is_never_put_in_place(settings, client, feeds, monkeypatch):
+    """A truncated file breaks every query over the source and names no culprit."""
+    import pyarrow.parquet as pq
+
+    from app.sources import base
+
+    monkeypatch.setattr(base.pq if hasattr(base, "pq") else pq, "read_metadata",
+                        lambda _path: (_ for _ in ()).throw(OSError("no magic bytes")))
+    run = runner.run_source(settings, "kev", client=client)
+    assert run["status"] == "failed" and "unreadable" in run["message"]
+    assert SOURCES["kev"].snapshot_dates(settings) == []
+    assert not list(settings.curated_dir.rglob("*.tmp"))
+
+
+def test_verify_finds_and_clears_a_broken_file(settings, client, feeds):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    runner.run_source(settings, "kev", client=client)
+    runner.run_source(settings, "epss", client=client)
+    broken = SOURCES["epss"].curated_path(settings, date(2026, 11, 12))
+    broken.write_bytes(b"not a parquet file at all")
+
+    with TestClient(app) as api:
+        report = api.post("/api/v1/maintenance/verify").json()
+        by_source = {s["source"]: s for s in report["sources"]}
+        assert report["repaired"] is False
+        assert len(by_source["epss"]["unreadable"]) == 1
+        assert by_source["epss"]["unreadable"][0]["removed"] is False
+        assert "backfill" in by_source["epss"]["advice"]
+        assert by_source["kev"]["unreadable"] == [] and by_source["kev"]["advice"] == ""
+
+        fixed = api.post("/api/v1/maintenance/verify", params={"repair": True}).json()
+        assert fixed["sources"][1]["unreadable"][0]["removed"] is True
+        assert not broken.exists()
+        assert api.post("/api/v1/maintenance/verify").json()["sources"][1]["unreadable"] == []

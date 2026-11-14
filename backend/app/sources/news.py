@@ -33,7 +33,7 @@ import pyarrow.parquet as pq
 
 from .. import state
 from ..config import Settings
-from .base import IngestResult, Source
+from .base import IngestResult, Source, promote
 
 FEEDS_FILE = Path(__file__).with_name("feeds.json")
 MAX_FEED_BYTES = 10 * 1024 * 1024
@@ -272,5 +272,5 @@ class NewsSource(Source):
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name("data.parquet.tmp")
         pq.write_table(table, tmp, compression="zstd")
-        os.replace(tmp, target)
+        promote(tmp, target)
         return list(fresh.values())

@@ -18,6 +18,7 @@ from . import queries, runner, state
 from .config import get_settings
 from .sources import SOURCES
 from .sources.news import load_feeds
+from . import maintenance
 from .analysis import exploitation
 from .taxonomy import mapping
 
@@ -200,6 +201,12 @@ def _backfill(days: list[date]) -> None:
             time.sleep(2 * (attempt + 1))
         else:
             log.warning("epss backfill: gave up on %s, the source stayed busy", day)
+
+
+@app.post("/api/v1/maintenance/verify", tags=["pipeline"])
+def verify_storage(repair: bool = Query(False, description="Delete the files that cannot be read")) -> dict:
+    """Check every stored file reads back. A single truncated file breaks whole queries."""
+    return maintenance.verify(get_settings(), repair)
 
 
 @app.get("/api/v1/jobs", tags=["pipeline"])

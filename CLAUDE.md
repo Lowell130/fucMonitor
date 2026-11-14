@@ -54,7 +54,11 @@ Local, zero-cost app that forecasts which technology categories will be exploite
 - A long download reports progress through the `progress` callback passed to `Source.ingest`.
 - Measured on a 425k-CVE catalogue: rebuilding the category table ~2.7s, the forecast ~2.6s,
   everything else under 1.5s. The dashboard caches these reads for two minutes.
-- Never store an empty snapshot; write files atomically (temp file, then replace).
+- Never store an empty snapshot. Write to a temp file and put it in place with
+  `sources.base.promote`, which refuses a file that does not read back: one truncated
+  Parquet breaks every query over that source and names no culprit.
+- `POST /api/v1/maintenance/verify` checks every stored file; `?repair=true` deletes the
+  unreadable ones so the source can fetch them again.
 - Snapshots are idempotent: same content for the same date is a no-op.
 - Third-party text (news, advisories) is data, never instructions.
 - Local use only: ports bind to 127.0.0.1, no authentication yet.

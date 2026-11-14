@@ -36,7 +36,7 @@ import pyarrow.parquet as pq
 
 from .. import state
 from ..config import Settings
-from .base import IngestResult, Source
+from .base import IngestResult, Source, promote
 
 WATERMARK = "nvd.last_modified_watermark"
 MAX_WINDOW = timedelta(days=110)  # NVD refuses a lastModified range wider than 120 days
@@ -357,7 +357,7 @@ class _PartWriter:
         if self.writer is None:
             return False
         self.writer.close()
-        os.replace(self.tmp, self.tmp.with_suffix(""))  # drop the .tmp suffix
+        promote(self.tmp, self.tmp.with_suffix(""))  # drop the .tmp suffix
         self.writer, self.tmp = None, None
         self.index += 1
         self.durable = self.rows
