@@ -2,7 +2,7 @@
   "app.title": "fucMonitor",
   "app.tagline": "Tendenze di sfruttamento per tecnologia. Tendenze, non attribuzioni.",
   "app.api_down": "L'API non è raggiungibile su {url}. Controlla che il container del backend sia attivo.",
-  "app.dev_notice": "Vista di sviluppo: mostra ciò che la pipeline ha raccolto. Le previsioni arriveranno dopo.",
+  "app.dev_notice": "Vista di sviluppo. I numeri vengono da fonti pubbliche e sono mostrati con la loro incertezza.",
   "nav.label": "Sezione",
   "nav.overview": "Panoramica",
   "nav.pipeline": "Pipeline",

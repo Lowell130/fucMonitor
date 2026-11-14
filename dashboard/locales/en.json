@@ -2,7 +2,7 @@
   "app.title": "fucMonitor",
   "app.tagline": "Exploitation trends by technology. Trends, not attribution.",
   "app.api_down": "The API is not reachable at {url}. Check that the backend container is running.",
-  "app.dev_notice": "Development view: it shows what the pipeline has collected. Forecasts come later.",
+  "app.dev_notice": "Development view. Numbers come from public sources and are shown with their uncertainty.",
   "nav.label": "Section",
   "nav.overview": "Overview",
   "nav.pipeline": "Pipeline",

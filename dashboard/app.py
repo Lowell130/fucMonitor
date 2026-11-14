@@ -164,7 +164,9 @@ def page_forecast() -> None:
     st.caption(t("forecast.method", horizon=horizon, lookback=data["lookback_days"] // 30))
     rows = [{**r, "label": names.get(r["category"], r["category"])} for r in data["items"]]
     frame = pd.DataFrame(rows)
-    base = alt.Chart(frame).encode(y=alt.Y("label:N", title=None, sort="-x"))
+    base = alt.Chart(frame).encode(
+        y=alt.Y("label:N", title=None, sort="-x", axis=alt.Axis(labelLimit=260))
+    )
     st.altair_chart(
         (base.mark_bar().encode(
             x=alt.X("expected:Q", title=t("forecast.axis", n=horizon)),
@@ -481,7 +483,7 @@ def page_categories() -> None:
         st.altair_chart(
             alt.Chart(frame).mark_bar().encode(
                 x=alt.X("cves:Q", title=t("categories.axis")),
-                y=alt.Y("label:N", title=None, sort="-x"),
+                y=alt.Y("label:N", title=None, sort="-x", axis=alt.Axis(labelLimit=260)),
                 tooltip=[alt.Tooltip("label:N", title=""), "cves:Q", "kev_cves:Q"],
             ),
             width="stretch",
