@@ -19,7 +19,7 @@ from .config import get_settings
 from .sources import SOURCES
 from .sources.news import load_feeds
 from . import maintenance
-from .analysis import exploitation
+from .analysis import backtest, exploitation
 from .taxonomy import mapping
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -405,6 +405,20 @@ def exploitation_forecast(
     recent publication volume times the historical rate, with an interval."""
     try:
         return exploitation.forecast(get_settings(), horizon, lookback_days)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/api/v1/analysis/backtest", tags=["analysis"])
+def exploitation_backtest(
+    horizon: int = Query(90, description="Days ahead: 30, 90 or 365"),
+    step_days: int = Query(30, ge=7, le=180),
+    points: int = Query(24, ge=3, le=120),
+) -> dict:
+    """Score the forecast methods against what actually happened, using only what was
+    known at each past date. A forecast nobody has scored is a decoration."""
+    try:
+        return backtest.run(get_settings(), horizon, step_days, points)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
