@@ -627,7 +627,9 @@ def scans_surges(settings: Settings, baseline_days: int = 30, min_z: float = 2.0
             SELECT port, observed_date, sources,
                    row_number() OVER (PARTITION BY port ORDER BY observed_date DESC) AS r
             FROM read_parquet(?)
-            WHERE observed_date > current_date - ?::INTEGER
+            -- today is still being aggregated upstream, so it reads low and would hide a
+            -- surge rather than show one: compare the last *complete* day instead.
+            WHERE observed_date < current_date AND observed_date > current_date - ?::INTEGER
         ),
         latest AS (SELECT port, observed_date, sources FROM recent WHERE r = 1),
         base AS (
@@ -645,7 +647,7 @@ def scans_surges(settings: Settings, baseline_days: int = 30, min_z: float = 2.0
         WHERE base.n >= 5
         ORDER BY z DESC NULLS LAST
         """,
-        [files, baseline_days + 1],
+        [files, baseline_days + 2],
     )
     for row in rows:
         for key in ("baseline_mean", "baseline_sd", "z", "ratio"):

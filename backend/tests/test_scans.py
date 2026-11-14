@@ -41,8 +41,9 @@ def isc(settings, tmp_path, monkeypatch):
         for i in range(days):
             d = start + timedelta(days=i)
             base = {445: 1000, 22: 5000, 500: 300}[port]
-            # 445 spikes hard on the last day; the others stay flat
-            value = base * 6 if (port == 445 and d == end) else base + (i % 3)
+            # 445 spikes on the last *complete* day (yesterday); today stays flat, as the
+            # real feed's current day is still being aggregated and reads low.
+            value = base * 6 if (port == 445 and d == end - timedelta(days=1)) else base + (i % 3)
             out.append((d.isoformat(), value))
         return out
 
@@ -143,9 +144,13 @@ def test_a_late_correction_rewrites_only_that_day(isc):
         parts = request.url.path.strip("/").split("/")
         port = int(parts[2]); start = date.fromisoformat(parts[3]); end = date.fromisoformat(parts[4])
         days = (end - start).days + 1
-        series = [( (start + timedelta(days=i)).isoformat(),
-                    (99999 if (port == 445 and i == days - 1) else {445:1000,22:5000,500:300}[port] + (i % 3)) )
-                  for i in range(days)]
+        def val(port, i):
+            if port == 445 and i == days - 1:
+                return 99999  # today revised upward
+            if port == 445 and i == days - 2:
+                return 1000 * 6  # the same yesterday spike the first run wrote
+            return {445: 1000, 22: 5000, 500: 300}[port] + (i % 3)
+        series = [((start + timedelta(days=i)).isoformat(), val(port, i)) for i in range(days)]
         return httpx.Response(200, content=history_doc(port, series))
 
     run = runner.run_source(settings, "scans",
