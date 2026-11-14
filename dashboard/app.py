@@ -243,9 +243,10 @@ def page_scans() -> None:
         st.success(t("scans.no_surge"))
 
     st.subheader(t("scans.trend"))
+    watched = sorted({p["category"] for p in get_cached("/api/v1/scans/ports")["items"]})
     a, b = st.columns([1, 3])
     days = a.select_slider(t("scans.days"), [30, 90, 180, 365], value=90)
-    shown = b.multiselect(t("scans.show"), list(names), default=list(names),
+    shown = b.multiselect(t("scans.show"), watched, default=watched,
                           format_func=lambda k: names.get(k, k))
     data = [r for r in get_cached("/api/v1/scans/trend", by="category", days=days)["items"]
             if r["key"] in shown]

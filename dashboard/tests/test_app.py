@@ -107,6 +107,7 @@ FULL = {
         "all": [{"port": 445, "category": "operating_system", "service": "SMB", "as_of": "2026-11-13",
          "latest_sources": 60000, "baseline_mean": 15000.0, "baseline_sd": 3000.0, "baseline_days": 29,
          "z": 15.0, "ratio": 4.0}]},
+    "/api/v1/scans/ports": {"items": [{"port": 445, "category": "operating_system", "service": "SMB"}, {"port": 443, "category": "web_cms", "service": "HTTPS"}]},
     "/api/v1/scans/trend": {"by": "category", "days": 90, "metric": "sources", "items": [
         {"day": "2026-11-12", "key": "operating_system", "value": 15000},
         {"day": "2026-11-13", "key": "operating_system", "value": 60000},
@@ -150,6 +151,7 @@ EMPTY = {
     "/api/v1/analysis/rates": {"horizons": [30, 90, 365], "items": []},
     "/api/v1/analysis/time-to-exploit": {"items": []},
     "/api/v1/scans/surges": {"baseline_days": 30, "min_z": 2.0, "surges": [], "all": []},
+    "/api/v1/scans/ports": {"items": [{"port": 445, "category": "operating_system", "service": "SMB"}]},
     "/api/v1/scans/trend": {"by": "category", "days": 90, "metric": "sources", "items": []},
     "/api/v1/categories/summary": {"items": []},
     "/api/v1/categories/products": {"total": 0, "items": []},
