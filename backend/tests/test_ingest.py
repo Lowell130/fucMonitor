@@ -119,3 +119,21 @@ def test_backfill_asks_for_one_file_per_step(settings, monkeypatch):
 
         backwards = api.post("/api/v1/sources/epss/backfill", params={"start": "2026-02-01", "end": "2026-01-01"})
         assert backwards.status_code == 422
+
+
+def test_a_busy_source_makes_the_backfill_wait_rather_than_skip_a_day(settings, monkeypatch):
+    """A day dropped because the source was busy would be a hole nobody notices."""
+    from app import main, runner
+
+    monkeypatch.setattr(main.time, "sleep", lambda _seconds: None)
+    attempts: list[date] = []
+
+    def busy_once(settings_arg, name, trigger="manual", backfill_day=None, client=None):
+        attempts.append(backfill_day)
+        if len(attempts) == 1:
+            raise runner.AlreadyRunning(name)
+        return {"status": "success"}
+
+    monkeypatch.setattr(main.runner, "run_source", busy_once)
+    main._backfill([date(2026, 11, 1)])
+    assert attempts == [date(2026, 11, 1), date(2026, 11, 1)]  # retried, not skipped

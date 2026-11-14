@@ -162,19 +162,29 @@ def backfill_epss(
     return {"accepted": True, "days_requested": len(wanted), "days_to_download": len(todo), "step": step}
 
 
-def _run_quietly(name: str, day: date | None) -> None:
+def _run_quietly(name: str, day: date | None) -> bool:
+    """Run one ingestion. False when the source was busy, so the caller can come back to it."""
     try:
         runner.run_source(get_settings(), name, "backfill" if day else "manual", backfill_day=day)
+        return True
     except runner.AlreadyRunning:
         log.info("%s: already running, request dropped", name)
+        return False
 
 
 def _backfill(days: list[date]) -> None:
+    """Fetch each day in turn. A day the source is busy with is retried rather than dropped:
+    the daily schedule or a second backfill would otherwise leave a hole nobody notices."""
     settings = get_settings()
     for index, day in enumerate(days):
         if index:
             time.sleep(settings.epss_backfill_delay_seconds)
-        _run_quietly("epss", day)
+        for attempt in range(6):
+            if _run_quietly("epss", day):
+                break
+            time.sleep(2 * (attempt + 1))
+        else:
+            log.warning("epss backfill: gave up on %s, the source stayed busy", day)
 
 
 @app.get("/api/v1/jobs", tags=["pipeline"])
