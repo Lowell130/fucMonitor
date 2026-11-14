@@ -104,7 +104,7 @@ def _source_status(settings, name: str) -> dict:
         "first_snapshot_date": dates[0] if dates else None,
         "latest_snapshot_date": latest,
         "latest_snapshot_age_days": (today - latest).days if latest else None,
-        "latest_rows": queries.count_rows(source.curated_path(settings, latest)) if latest else None,
+        "latest_rows": queries.count_rows(source.curated_files_for(settings, latest)) if latest else None,
         "last_run": state.last_run(settings.state_db, name),
         "last_success_at": last_ok["finished_at"] if last_ok else None,
     }

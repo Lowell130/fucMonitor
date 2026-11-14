@@ -284,3 +284,19 @@ def test_an_unfinished_download_is_picked_up_again_at_startup(nvd, monkeypatch):
                     payload([record("CVE-2026-0005"), record("CVE-2026-0006")], 6, start=4)]
     assert runner.run_source(settings, "nvd", client=client)["status"] == "success"
     assert source.needs_run(settings) is False
+
+
+def test_the_pipeline_view_survives_a_day_split_across_part_files(nvd):
+    """The catalogue writes several parts a day; counting them assumed a single file,
+    so the pipeline page broke the moment NVD had real data."""
+    settings, box, client = nvd
+    box["pages"] = [payload([record("CVE-2026-0001"), record("CVE-2026-0002")], 2)]
+    runner.run_source(settings, "nvd", client=client)
+    box["pages"] = [payload([record("CVE-2026-0003")], 1)]
+    runner.run_source(settings, "nvd", client=client)
+    assert len(SOURCES["nvd"].curated_files(settings)) == 2
+
+    with TestClient(app) as api:
+        status = {s["name"]: s for s in api.get("/api/v1/sources").json()["sources"]}
+        assert status["nvd"]["latest_rows"] == 3  # both parts counted
+        assert status["kev"]["latest_rows"] is None  # nothing collected, nothing counted

@@ -71,6 +71,11 @@ class Source:
 
         return utcnow().date() not in self.snapshot_dates(settings)
 
+    def curated_files_for(self, settings: Settings, day: date) -> list[str]:
+        """Every file of one day. A day can hold several parts, so never assume one name."""
+        folder = self.curated_path(settings, day).parent
+        return [p.as_posix() for p in sorted(folder.glob("*.parquet"))]
+
     def curated_files(self, settings: Settings) -> list[str]:
         """Every stored file, oldest day first. Pass it straight to read_parquet."""
         root = settings.curated_dir / self.name

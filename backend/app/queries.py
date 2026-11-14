@@ -4,7 +4,6 @@ Every query opens its own in-memory connection, so there is no database file to 
 """
 
 from datetime import date
-from pathlib import Path
 
 import duckdb
 
@@ -33,8 +32,10 @@ def _rows(sql: str, params: list | None = None) -> list[dict]:
         con.close()
 
 
-def count_rows(path: Path) -> int:
-    return _rows("SELECT count(*) AS n FROM read_parquet(?)", [path.as_posix()])[0]["n"]
+def count_rows(files: list[str]) -> int:
+    if not files:
+        return 0
+    return _rows("SELECT count(*) AS n FROM read_parquet(?)", [files])[0]["n"]
 
 
 # --- KEV ---------------------------------------------------------------------
