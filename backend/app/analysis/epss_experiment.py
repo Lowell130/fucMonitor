@@ -287,14 +287,9 @@ MODELS = ("base_rate",) + RANKERS
 _FEATURE_COLS = {"epss_platt": [0], "epss_age": [0, 2], "epss_trend": [0, 1], "feat_model": [0, 1, 2, 3]}
 
 
-def run(settings: Settings, horizon: int = 30, neg_ratio: int = 40, min_train_pos: int = 30,
-        start: date | None = None, budgets=(5, 10, 20, 50, 100), seed: int = 42) -> dict:
-    """Walk-forward comparison of raw EPSS, a constant base-rate, recalibrated EPSS,
-    EPSS+age, EPSS+trend and the full feature model.
-
-    Everything here is reconstructed from the stored point-in-time Parquet, so the result is
-    reproducible from the repository. Touches nothing else in the app.
-    """
+def assemble_all(settings: Settings, horizon: int = 30, start: date | None = None) -> tuple[list[date], dict]:
+    """Build the point-in-time feature arrays for every monthly eval date. The slow half of a
+    run; split out so callers can cache it and so tests can exercise it directly."""
     from ..state import utcnow
 
     start = start or date(2022, 1, 1)
@@ -311,7 +306,24 @@ def run(settings: Settings, horizon: int = 30, neg_ratio: int = 40, min_train_po
                 for D in evals}
     finally:
         con.close()
+    return evals, data
 
+
+def run(settings: Settings, horizon: int = 30, neg_ratio: int = 40, min_train_pos: int = 30,
+        start: date | None = None, budgets=(5, 10, 20, 50, 100), seed: int = 42) -> dict:
+    """Walk-forward comparison of raw EPSS, a constant base-rate, recalibrated EPSS,
+    EPSS+age, EPSS+trend and the full feature model.
+
+    Everything here is reconstructed from the stored point-in-time Parquet, so the result is
+    reproducible from the repository. Touches nothing else in the app.
+    """
+    evals, data = assemble_all(settings, horizon, start)
+    return evaluate(evals, data, horizon, neg_ratio, min_train_pos, budgets, seed)
+
+
+def evaluate(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 40,
+             min_train_pos: int = 30, budgets=(5, 10, 20, 50, 100), seed: int = 42) -> dict:
+    """Walk-forward training, scoring and metrics over pre-assembled feature arrays."""
     rng = np.random.default_rng(seed)
     rec = {m: [] for m in MODELS}
     ry, ryr, rd2k, rdid, scored = [], [], [], [], []
