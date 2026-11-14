@@ -1,3 +1,4 @@
+import gzip
 import json
 from datetime import date
 
@@ -137,3 +138,21 @@ def test_a_busy_source_makes_the_backfill_wait_rather_than_skip_a_day(settings, 
     monkeypatch.setattr(main.runner, "run_source", busy_once)
     main._backfill([date(2026, 11, 1)])
     assert attempts == [date(2026, 11, 1), date(2026, 11, 1)]  # retried, not skipped
+
+
+def test_the_oldest_epss_files_have_no_percentile_column(settings, client, feeds):
+    """EPSS v1, April 2021 to February 2022: no comment line and only cve,epss."""
+    feeds["epss"] = epss_file(header=False, percentile=False)
+    run = runner.run_source(settings, "epss", "backfill", backfill_day=date(2021, 8, 25), client=client)
+    assert run["status"] == "success" and run["rows"] == 4
+    row = duckdb.connect().execute(
+        "SELECT epss, percentile FROM read_parquet(?) WHERE cve_id = 'CVE-2024-0001'",
+        [str(SOURCES["epss"].curated_path(settings, date(2021, 8, 25)))],
+    ).fetchone()
+    assert row == (0.94321, None)  # the score is kept, the percentile simply did not exist
+
+
+def test_a_file_without_the_expected_columns_is_refused(settings, client, feeds):
+    feeds["epss"] = gzip.compress(b"something,else\n1,2\n")
+    run = runner.run_source(settings, "epss", client=client)
+    assert run["status"] == "failed" and "unexpected EPSS columns" in run["message"]

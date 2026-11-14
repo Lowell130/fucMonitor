@@ -54,17 +54,19 @@ KEV_DOC = {
 }
 
 
-def epss_file(score_date: str = "2026-11-12", header: bool = True) -> bytes:
+def epss_file(score_date: str = "2026-11-12", header: bool = True, percentile: bool = True) -> bytes:
+    """An EPSS file. `percentile=False` reproduces the v1 shape used until February 2022."""
     lines = []
     if header:
         lines.append(f"#model_version:v2025.03.14,score_date:{score_date}T00:00:00+0000")
-    lines += [
-        "cve,epss,percentile",
-        "CVE-2024-0001,0.94321,0.99900",
-        "CVE-2023-0002,0.00450,0.61000",
-        "CVE-2021-9999,0.25000,0.96000",
-        "CVE-2020-1111,0.00010,0.01000",
-    ]
+    rows = [("CVE-2024-0001", "0.94321", "0.99900"), ("CVE-2023-0002", "0.00450", "0.61000"),
+            ("CVE-2021-9999", "0.25000", "0.96000"), ("CVE-2020-1111", "0.00010", "0.01000")]
+    if percentile:
+        lines.append("cve,epss,percentile")
+        lines += [",".join(row) for row in rows]
+    else:
+        lines.append("cve,epss")
+        lines += [f"{row[0]},{row[1]}" for row in rows]
     return gzip.compress(("\n".join(lines) + "\n").encode())
 
 

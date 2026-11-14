@@ -23,15 +23,25 @@ _SCORE_DATE = re.compile(r"score_date:(\d{4}-\d{2}-\d{2})")
 _MODEL = re.compile(r"model_version:([^,\s]+)")
 
 
-def read_header(content: bytes) -> tuple[date | None, str | None, int]:
-    """Return (score_date, model_version, lines to skip before the CSV header)."""
+def read_header(content: bytes) -> tuple[date | None, str | None, int, list[str]]:
+    """Return (score_date, model_version, lines to skip, column names).
+
+    EPSS v1 files, from April 2021 to February 2022, carry no comment line and only two
+    columns: `cve,epss`. The percentile arrived with v2. Reading the real header instead of
+    assuming one keeps the earliest history usable.
+    """
     with gzip.open(io.BytesIO(content), "rt", encoding="utf-8") as fh:
         first = fh.readline()
-    if not first.startswith("#"):
-        return None, None, 0
-    d = _SCORE_DATE.search(first)
-    m = _MODEL.search(first)
-    return (date.fromisoformat(d.group(1)) if d else None), (m.group(1) if m else None), 1
+        comment = first.startswith("#")
+        header_line = fh.readline() if comment else first
+    columns = [name.strip().lower() for name in header_line.strip().split(",") if name.strip()]
+    if "cve" not in columns or "epss" not in columns:
+        raise ValueError(f"unexpected EPSS columns: {columns}")
+    if not comment:
+        return None, None, 0, columns
+    day = _SCORE_DATE.search(first)
+    model = _MODEL.search(first)
+    return (date.fromisoformat(day.group(1)) if day else None), (model.group(1) if model else None), 1, columns
 
 
 class EpssSource(Source):
@@ -57,7 +67,7 @@ class EpssSource(Source):
         backfilled: bool = False,
     ) -> IngestResult:
         retrieved_at = utcnow()
-        score_date, model, skip = read_header(content)
+        score_date, model, skip, columns = read_header(content)
         snapshot = score_date or fallback_date or retrieved_at.date()
         digest = sha256(content)
 
@@ -79,6 +89,10 @@ class EpssSource(Source):
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_name("data.parquet.tmp")
 
+        # The file declares its own columns; v1 has no percentile at all.
+        column_types = ", ".join(f"'{name}': 'VARCHAR'" for name in columns)
+        percentile = "percentile::DOUBLE" if "percentile" in columns else "NULL::DOUBLE"
+
         con = duckdb.connect()
         try:
             con.execute(
@@ -86,13 +100,13 @@ class EpssSource(Source):
                 COPY (
                     SELECT upper(trim(cve))        AS cve_id,
                            epss::DOUBLE            AS epss,
-                           percentile::DOUBLE      AS percentile,
+                           {percentile}            AS percentile,
                            ?::VARCHAR              AS model_version,
                            ?::DATE                 AS score_date,
                            ?::TIMESTAMPTZ          AS retrieved_at,
                            ?::BOOLEAN              AS backfilled
                     FROM read_csv(?, skip = {int(skip)}, header = true, compression = 'gzip',
-                                  columns = {{'cve': 'VARCHAR', 'epss': 'VARCHAR', 'percentile': 'VARCHAR'}})
+                                  columns = {{{column_types}}})
                     WHERE cve IS NOT NULL
                 ) TO '{tmp.as_posix()}' (FORMAT parquet, COMPRESSION zstd)
                 """,
