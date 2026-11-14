@@ -86,19 +86,26 @@ def page_overview() -> None:
         return
 
     names = labels("technology_categories")
-    forecast = get_cached("/api/v1/analysis/forecast", horizon=90)["items"]
+    prio = get_cached("/api/v1/analysis/priority", horizon=90)
+    forecast = prio["items"]
     if forecast:
         top = [f for f in forecast if f["expected"] > 0][:3]
         if top:
             st.subheader(t("overview.at_risk"))
             st.caption(t("overview.at_risk_help"))
             for column, row in zip(st.columns(len(top)), top):
+                label = names.get(row["category"], row["category"])
+                if row.get("elevated_scanning"):
+                    label = "🔺 " + label
                 column.metric(
-                    names.get(row["category"], row["category"]),
-                    f"{row['expected']:.1f}",
+                    label, f"{row['expected']:.1f}",
                     help=t("overview.at_risk_metric", low=row["low"], high=row["high"],
-                           share=f"{row['share']:.1%}"),
+                           share=f"{row['share']:.1%}" if row["share"] is not None else "–"),
                 )
+            watch = [w for w in prio["watch"] if w["category"] not in {r["category"] for r in top}]
+            if any(r.get("elevated_scanning") for r in top) or watch:
+                parts = [names.get(w["category"], w["category"]) for w in prio["watch"]]
+                st.caption("🔺 " + t("overview.scanning_note", cats=", ".join(parts)))
             st.caption(t("overview.at_risk_link"))
 
     st.subheader(t("overview.catalogue"))
@@ -264,6 +271,24 @@ def page_scans() -> None:
             width="stretch",
         )
     st.caption(t("scans.trend_help"))
+
+    st.subheader(t("scans.check"))
+    check = get_cached("/api/v1/analysis/scan-signal-check", lead_days=30)
+    verdict_key = {
+        "scanning surges were followed by more exploitation": "scans.check_yes",
+        "no lead found: surges were followed by less, not more": "scans.check_no",
+        "no clear lead either way": "scans.check_flat",
+        "too little history to tell yet": "scans.check_thin",
+        "no data": "scans.check_thin",
+    }.get(check.get("verdict"), "scans.check_thin")
+    st.markdown("**" + t(verdict_key) + "**")
+    if check.get("mean_after_elevated") is not None:
+        cols = st.columns(3)
+        cols[0].metric(t("scans.check_lift"), f"{check['lift']:.2f}×" if check.get("lift") else "–")
+        cols[1].metric(t("scans.check_after_surge"), f"{check['mean_after_elevated']:.2f}")
+        cols[2].metric(t("scans.check_normal"), f"{check['mean_after_normal']:.2f}")
+    st.caption(t("scans.check_help", lead=check.get("lead_days", 30),
+                 days=check.get("elevated_days", 0), events=check.get("events_after_elevated", 0)))
 
     with st.expander(t("scans.about")):
         st.markdown(t("scans.about_text"))

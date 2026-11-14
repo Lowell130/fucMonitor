@@ -123,7 +123,10 @@ curl -X POST "http://localhost:8000/api/v1/sources/scans/backfill?years=2"
 ```
 
 Il rilevatore di impennate confronta ogni servizio con i propri 30 giorni precedenti e segnala
-quelli ben sopra la propria media. È un segnale, non una prova.
+quelli ben sopra la propria media. Nella Panoramica la pressione di scansione è mostrata accanto
+alla previsione, mai fusa con essa. Un controllo (`/api/v1/analysis/scan-signal-check`) misura
+sulla storia reale se le impennate hanno anticipato lo sfruttamento, e si rifiuta di affermarlo
+senza numeri a sufficienza. È un segnale, non una prova.
 
 ## Notizie e avvisi
 

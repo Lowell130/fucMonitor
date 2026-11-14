@@ -270,5 +270,15 @@
   "scans.axis": "Distinct scanning sources",
   "scans.trend_help": "Distinct source IPs seen per day, summed over the ports tied to each category. A port maps to a category only loosely, so read the shape over time, not the absolute height.",
   "scans.about": "What this is, and is not",
-  "scans.about_text": "- **Source**: the SANS Internet Storm Center (DShield), which aggregates many sensors' logs into daily totals per port. We never fetch or store an individual address.\\n- **Ports stand in for categories loosely.** Many services share a port and 443 carries almost everything, so this is scanning of services *associated with* a category, not a product and never a target.\\n- **It is an early signal, not proof.** A surge means attention; it precedes exploitation often enough to be worth watching, but not always, and quiet is not safety.\\n- **One network of sensors sees a slice of the Internet.** A change can be a change in the sensors as much as in the world."
+  "scans.about_text": "- **Source**: the SANS Internet Storm Center (DShield), which aggregates many sensors' logs into daily totals per port. We never fetch or store an individual address.\\n- **Ports stand in for categories loosely.** Many services share a port and 443 carries almost everything, so this is scanning of services *associated with* a category, not a product and never a target.\\n- **It is an early signal, not proof.** A surge means attention; it precedes exploitation often enough to be worth watching, but not always, and quiet is not safety.\\n- **One network of sensors sees a slice of the Internet.** A change can be a change in the sensors as much as in the world.",
+  "overview.scanning_note": "Under elevated scanning right now: {cats}. A live signal, shown beside the forecast, never folded into it.",
+  "scans.check": "Does scanning lead exploitation?",
+  "scans.check_yes": "On the history so far, a surge in a category's scanning was followed by more exploitation in it than usual.",
+  "scans.check_no": "On the history so far, scanning surges were not followed by more exploitation — if anything, less.",
+  "scans.check_flat": "On the history so far, scanning surges were followed by about the usual amount of exploitation: no clear lead.",
+  "scans.check_thin": "There is not enough history yet to say whether scanning leads exploitation. The check runs again as the record grows.",
+  "scans.check_lift": "Lift",
+  "scans.check_after_surge": "Exploits after a surge",
+  "scans.check_normal": "Exploits normally",
+  "scans.check_help": "Pooled across categories: for each day, exploitation in the next {lead} days, averaged after elevated-scanning days versus ordinary days. Based on {days} elevated days and {events} exploitation events after them. Lift is the ratio; above 1 means surges led to more."
 }

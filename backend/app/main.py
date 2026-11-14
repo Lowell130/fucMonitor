@@ -19,7 +19,7 @@ from .config import get_settings
 from .sources import SOURCES
 from .sources.news import load_feeds
 from . import maintenance
-from .analysis import backtest, exploitation
+from .analysis import backtest, exploitation, priority
 from .taxonomy import mapping
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -469,6 +469,26 @@ def backfill_scans(background: BackgroundTasks, years: int = Query(2, ge=1, le=5
     """Fetch several years of scanning history, one year at a time per watched port."""
     background.add_task(_backfill_scans, years)
     return {"accepted": True, "years": years}
+
+
+@app.get("/api/v1/analysis/priority", tags=["analysis"])
+def exploitation_priority(horizon: int = Query(90, description="Days ahead: 30, 90 or 365")) -> dict:
+    """The forecast per category with the current scanning pressure beside it, plus a watch
+    list of categories under elevated scanning now. Scanning never reorders the forecast."""
+    try:
+        return priority.combined(get_settings(), horizon)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/api/v1/analysis/scan-signal-check", tags=["analysis"])
+def scan_signal_check(
+    lead_days: int = Query(30, ge=7, le=180),
+    threshold: float = Query(2.0, ge=0.5, le=10.0),
+) -> dict:
+    """Test, against the real history, whether a rise in a category's scanning was followed by
+    more exploitation in it. An honest sanity check on a weak signal, not a trained model."""
+    return priority.signal_check(get_settings(), lead_days, threshold)
 
 
 @app.get("/api/v1/taxonomy", tags=["data"])

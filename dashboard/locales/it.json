@@ -270,5 +270,15 @@
   "scans.axis": "Sorgenti di scansione distinte",
   "scans.trend_help": "Indirizzi sorgente distinti osservati al giorno, sommati sulle porte legate a ciascuna categoria. Una porta è legata a una categoria solo in modo approssimativo: conta l'andamento nel tempo, non l'altezza assoluta.",
   "scans.about": "Cos'è, e cosa non è",
-  "scans.about_text": "- **Fonte**: il SANS Internet Storm Center (DShield), che aggrega i log di molti sensori in totali giornalieri per porta. Non raccogliamo né archiviamo alcun indirizzo singolo.\\n- **Le porte rappresentano le categorie in modo approssimativo.** Molti servizi condividono una porta e la 443 porta quasi tutto: è scansione di servizi *associati a* una categoria, non di un prodotto e mai di un bersaglio.\\n- **È un segnale precoce, non una prova.** Un'impennata indica attenzione; precede lo sfruttamento abbastanza spesso da valere la pena, ma non sempre, e la quiete non è sicurezza.\\n- **Una rete di sensori vede una fetta di Internet.** Una variazione può essere un cambiamento nei sensori più che nel mondo."
+  "scans.about_text": "- **Fonte**: il SANS Internet Storm Center (DShield), che aggrega i log di molti sensori in totali giornalieri per porta. Non raccogliamo né archiviamo alcun indirizzo singolo.\\n- **Le porte rappresentano le categorie in modo approssimativo.** Molti servizi condividono una porta e la 443 porta quasi tutto: è scansione di servizi *associati a* una categoria, non di un prodotto e mai di un bersaglio.\\n- **È un segnale precoce, non una prova.** Un'impennata indica attenzione; precede lo sfruttamento abbastanza spesso da valere la pena, ma non sempre, e la quiete non è sicurezza.\\n- **Una rete di sensori vede una fetta di Internet.** Una variazione può essere un cambiamento nei sensori più che nel mondo.",
+  "overview.scanning_note": "Sotto scansione elevata ora: {cats}. Un segnale dal vivo, mostrato accanto alla previsione, mai fuso con essa.",
+  "scans.check": "Le scansioni anticipano lo sfruttamento?",
+  "scans.check_yes": "Sulla storia finora, un'impennata di scansioni di una categoria è stata seguita da più sfruttamento del solito in quella categoria.",
+  "scans.check_no": "Sulla storia finora, le impennate di scansioni non sono state seguite da più sfruttamento, semmai meno.",
+  "scans.check_flat": "Sulla storia finora, le impennate di scansioni sono state seguite da uno sfruttamento nella media: nessun anticipo chiaro.",
+  "scans.check_thin": "Non c'è ancora abbastanza storia per dire se le scansioni anticipino lo sfruttamento. Il controllo si ripete man mano che i dati crescono.",
+  "scans.check_lift": "Rapporto",
+  "scans.check_after_surge": "Sfruttamenti dopo un'impennata",
+  "scans.check_normal": "Sfruttamenti nella norma",
+  "scans.check_help": "Aggregato sulle categorie: per ogni giorno, lo sfruttamento nei {lead} giorni successivi, mediato dopo i giorni di scansione elevata rispetto ai giorni normali. Basato su {days} giorni elevati e {events} sfruttamenti successivi. Il rapporto sopra 1 indica che le impennate hanno portato a di più."
 }

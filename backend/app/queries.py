@@ -655,3 +655,54 @@ def scans_surges(settings: Settings, baseline_days: int = 30, min_z: float = 2.0
                 row[key] = round(row[key], 3)
     surges = [r for r in rows if r["z"] is not None and r["z"] >= min_z]
     return {"baseline_days": baseline_days, "min_z": min_z, "surges": surges, "all": rows}
+
+
+def category_scan_pressure(settings: Settings, baseline_days: int = 30) -> dict[str, dict]:
+    """Per category, how elevated today's scanning is against its own recent baseline.
+
+    The category's daily total of distinct scanning sources (summed over its ports) on the
+    last complete day, compared with the mean and spread of the `baseline_days` before it.
+    Returns {category: {z, ratio, latest, baseline_mean, as_of}}. The current day is left out
+    because it is still being aggregated upstream and reads low.
+    """
+    files = _scan_files(settings)
+    if not files:
+        return {}
+    from .sources.scans import load_ports
+
+    pairs = ", ".join(f"({p['port']}, '{p['category']}')" for p in load_ports(settings))
+    rows = _rows(
+        f"""
+        WITH daily AS (
+            SELECT m.category, s.observed_date AS day, sum(s.sources) AS sources
+            FROM read_parquet(?) s
+            JOIN (VALUES {pairs}) AS m(port, category) ON m.port = s.port
+            WHERE s.observed_date < current_date AND s.observed_date > current_date - ?::INTEGER
+            GROUP BY 1, 2
+        ),
+        ranked AS (
+            SELECT category, day, sources,
+                   row_number() OVER (PARTITION BY category ORDER BY day DESC) AS r
+            FROM daily
+        ),
+        latest AS (SELECT category, day, sources FROM ranked WHERE r = 1),
+        base AS (SELECT category, avg(sources) AS mean, stddev_samp(sources) AS sd,
+                        count(*) AS n FROM ranked WHERE r > 1 GROUP BY category)
+        SELECT l.category, l.day AS as_of, l.sources AS latest,
+               base.mean AS baseline_mean, base.sd AS baseline_sd,
+               CASE WHEN base.sd > 0 THEN (l.sources - base.mean) / base.sd END AS z,
+               CASE WHEN base.mean > 0 THEN l.sources / base.mean END AS ratio
+        FROM latest l JOIN base USING (category) WHERE base.n >= 5
+        """,
+        [files, baseline_days + 2],
+    )
+    out = {}
+    for row in rows:
+        out[row["category"]] = {
+            "as_of": row["as_of"],
+            "latest": row["latest"],
+            "baseline_mean": round(row["baseline_mean"], 1) if row["baseline_mean"] is not None else None,
+            "z": round(row["z"], 2) if row["z"] is not None else None,
+            "ratio": round(row["ratio"], 2) if row["ratio"] is not None else None,
+        }
+    return out

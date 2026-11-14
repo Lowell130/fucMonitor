@@ -31,6 +31,9 @@ Local, zero-cost app that forecasts which technology categories will be exploite
 - `backend/app/taxonomy/mapping.py` + `rules.json`: product (`vendor:product`) to technology
   category. Manual assignments live in the `product_category` table and always beat the rules.
   Derived table rebuilt whenever rules, catalogue or a manual decision changes.
+- `backend/app/analysis/priority.py`: joins the forecast with live scanning pressure. Scanning
+  is a flag beside the measured forecast, never folded into it. `signal_check` tests on the real
+  history whether scanning surges led exploitation, and refuses to claim it without the counts.
 - `backend/app/analysis/exploitation.py`: historical exploitation rates per category and the
   baseline forecast. Every rate is censored by horizon: only CVEs old enough to have had H days
   are counted. Intervals are Wilson (shares) and Byar/Poisson (counts), no new dependency.
