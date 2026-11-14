@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app import queries, runner, state
 from app.main import app
+from app.sources import SOURCES
 from app.taxonomy import mapping
 
 from .test_nvd import payload, record
@@ -160,3 +161,21 @@ def test_a_cve_profile_carries_its_categories(catalogue):
 )
 def test_rules_cover_what_the_queue_turned_up(product, category):
     assert mapping.classify(product)[0] == category
+
+
+def test_coverage_works_when_the_catalogue_spans_several_files(catalogue, monkeypatch):
+    """The real catalogue is dozens of part files; with one file a wrong parameter list
+    still happened to work, which is how this stayed hidden."""
+    settings = catalogue
+    source = SOURCES["nvd"]
+    day = source.snapshot_dates(settings)[0]
+    folder = source.curated_path(settings, day).parent
+    original = next(folder.glob("*.parquet"))
+    for index in range(3):
+        (folder / f"part-copy-{index}.parquet").write_bytes(original.read_bytes())
+    assert len(source.curated_files(settings)) == 4
+
+    runner.refresh_categories(settings, force=True)
+    coverage = queries.categories_coverage(settings)
+    assert coverage["cves"] == 6 and coverage["cves_mapped"] == 4  # same answer, more files
+    assert coverage["products"] == 5

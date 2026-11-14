@@ -505,7 +505,8 @@ def categories_coverage(settings: Settings) -> dict:
                          WHERE published_date >= current_date - INTERVAL 730 DAY) AS recent_cves,
                        (SELECT count(*) FROM mapped
                          WHERE published_date >= current_date - INTERVAL 730 DAY) AS recent_cves_mapped""",
-            pairs[1] + files,
+            # [files] and not files: the list is one parameter, not one parameter per file.
+            pairs[1] + [files],
         )[0]
         row.update(counts)
     return {**empty, **row}
