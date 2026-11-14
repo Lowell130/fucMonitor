@@ -19,7 +19,7 @@ from .config import get_settings
 from .sources import SOURCES
 from .sources.news import load_feeds
 from . import maintenance
-from .analysis import backtest, exploitation, priority
+from .analysis import backtest, epss_experiment, exploitation, priority
 from .taxonomy import mapping
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -489,6 +489,32 @@ def scan_signal_check(
     """Test, against the real history, whether a rise in a category's scanning was followed by
     more exploitation in it. An honest sanity check on a weak signal, not a trained model."""
     return priority.signal_check(get_settings(), lead_days, threshold)
+
+
+@app.get("/api/v1/analysis/epss-experiment", tags=["analysis"])
+def epss_experiment_report(
+    horizon: int = Query(30, description="Outcome window in days: 30 (EPSS-aligned), 7 or 90"),
+) -> dict:
+    """Walk-forward CVE-level comparison against EPSS for the KEV-entry target: raw EPSS, a
+    constant base-rate, recalibrated EPSS, EPSS+age, EPSS+trend and the full feature model.
+    Experimental and separate: it never feeds the category forecast."""
+    try:
+        return epss_experiment.run(get_settings(), horizon=horizon)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/api/v1/analysis/epss-experiment/scores", tags=["analysis"])
+def epss_experiment_scores(
+    horizon: int = Query(30, ge=7, le=90),
+    top: int = Query(100, ge=1, le=1000),
+) -> dict:
+    """EXPERIMENTAL ranking of today's not-yet-listed CVEs by likely KEV listing within the
+    horizon. Not a probability of real exploitation, and never fused into the forecast."""
+    try:
+        return epss_experiment.score_current(get_settings(), horizon=horizon, top=top)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @app.get("/api/v1/taxonomy", tags=["data"])

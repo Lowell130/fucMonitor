@@ -1,0 +1,220 @@
+"""Tests for the CVE-level EPSS experiment, focused on temporal leakage.
+
+A predictive evaluation is only worth anything if no feature, label or parameter choice used
+information from the future. These build a tiny synthetic point-in-time store and assert that
+property at every seam, plus the invariants the report relies on.
+"""
+
+from datetime import date, datetime, timezone
+
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pytest
+
+from app.analysis import epss_experiment as ex
+from app.sources import SOURCES
+
+
+# --- helpers to lay down a synthetic curated store --------------------------
+def _write(path, table):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pq.write_table(table, path)
+
+
+def _epss_snapshot(settings, day: date, rows: list[tuple]):
+    """rows: (cve_id, epss). Only the columns the module reads are needed."""
+    t = pa.table({"cve_id": [r[0] for r in rows], "epss": [float(r[1]) for r in rows]})
+    _write(SOURCES["epss"].curated_path(settings, day), t)
+
+
+def _kev(settings, rows: list[tuple]):
+    """rows: (cve_id, date_added)."""
+    t = pa.table({"cve_id": [r[0] for r in rows], "date_added": [r[1] for r in rows]})
+    _write(SOURCES["kev"].curated_path(settings, date(2026, 11, 14)), t)
+
+
+def _nvd(settings, rows: list[tuple]):
+    """rows: (cve_id, published_date)."""
+    t = pa.table({
+        "cve_id": [r[0] for r in rows],
+        "published": [datetime(r[1].year, r[1].month, r[1].day, tzinfo=timezone.utc) for r in rows],
+    })
+    _write(SOURCES["nvd"].curated_path(settings, date(2026, 11, 14)), t)
+
+
+def _con(settings):
+    import duckdb
+
+    con = duckdb.connect()
+    ex._lookup_tables(con, settings)
+    return con
+
+
+# --- pure-logic leakage rules ------------------------------------------------
+def test_train_dates_never_use_unclosed_windows():
+    evals = [date(2024, 1, 1), date(2024, 2, 1), date(2024, 3, 1), date(2024, 4, 1)]
+    # At 2024-03-01 with a 30-day horizon, 2024-02-01's window closes 2024-03-02 (> 03-01),
+    # so it must be excluded; only January qualifies.
+    assert ex._train_dates(evals, date(2024, 3, 1), 30) == [date(2024, 1, 1)]
+    # The test date itself is never in its own training set.
+    assert date(2024, 3, 1) not in ex._train_dates(evals, date(2024, 3, 1), 30)
+
+
+def test_monthly_eval_dates_exclude_unelapsed_window():
+    dates = [date(2026, 10, 1), date(2026, 11, 1)]
+    today = date(2026, 11, 14)
+    got = ex._monthly_eval_dates(dates, horizon=30, start=date(2022, 1, 1), today=today)
+    assert date(2026, 10, 1) in got          # window closed 2026-10-31 <= today
+    assert date(2026, 11, 1) not in got      # window closes 2026-12-01 > today
+
+
+def test_prior_snapshot_is_strictly_earlier():
+    dates = [date(2024, 1, 1), date(2024, 1, 29), date(2024, 2, 26)]
+    p = ex._prior_snapshot(dates, date(2024, 2, 26))
+    assert p is not None and p < date(2024, 2, 26) and (date(2024, 2, 26) - p).days >= 14
+
+
+# --- feature/label point-in-time correctness ---------------------------------
+@pytest.fixture
+def store(settings):
+    """A store where the leakage traps are explicit.
+
+    At D = 2024-02-26 and a 30-day window:
+      PAST    already in KEV on 2024-01-10  -> excluded from the population
+      SOON    enters KEV 2024-03-10 (in window)      -> positive
+      LATER   enters KEV 2024-06-01 (after window)   -> negative, NOT excluded
+      NEVER   never in KEV                            -> negative
+      FUTUREPUB published 2024-05-01 (after D)        -> excluded (not yet published)
+    """
+    D = date(2024, 2, 26)
+    prior = date(2024, 1, 29)
+    for day, ep in [(prior, 0.10), (D, 0.20)]:
+        _epss_snapshot(settings, day, [
+            ("CVE-PAST", ep), ("CVE-SOON", ep + 0.05), ("CVE-LATER", ep),
+            ("CVE-NEVER", 0.001), ("CVE-FUTUREPUB", 0.30),
+        ])
+    _kev(settings, [
+        ("CVE-PAST", date(2024, 1, 10)),
+        ("CVE-SOON", date(2024, 3, 10)),
+        ("CVE-LATER", date(2024, 6, 1)),
+    ])
+    _nvd(settings, [
+        ("CVE-PAST", date(2020, 1, 1)), ("CVE-SOON", date(2023, 1, 1)),
+        ("CVE-LATER", date(2023, 1, 1)), ("CVE-NEVER", date(2023, 1, 1)),
+        ("CVE-FUTUREPUB", date(2024, 5, 1)),
+    ])
+    return settings, D, prior
+
+
+def test_already_listed_cve_excluded_and_future_entry_is_positive(store):
+    settings, D, prior = store
+    con = _con(settings)
+    # Query the population the same way _assemble does, but keep ids to assert membership.
+    import duckdb
+
+    rows = duckdb.connect().execute(f"""
+        WITH e AS (SELECT cve_id, epss FROM read_parquet('{ex._epss_file(settings, D)}'))
+        SELECT e.cve_id,
+               CASE WHEN k.kev_date > DATE '{D}' AND k.kev_date <= DATE '{D}' + 30 THEN 1 ELSE 0 END AS y
+        FROM e
+        LEFT JOIN (SELECT cve_id, min(date_added) kev_date FROM read_parquet('{SOURCES["kev"].curated_path(settings, date(2026,11,14)).as_posix()}') GROUP BY 1) k USING(cve_id)
+        LEFT JOIN (SELECT cve_id, min(published) published FROM read_parquet('{SOURCES["nvd"].curated_path(settings, date(2026,11,14)).as_posix()}') GROUP BY 1) p USING(cve_id)
+        WHERE (k.kev_date IS NULL OR k.kev_date > DATE '{D}')
+          AND p.published IS NOT NULL AND p.published <= TIMESTAMP '{D} 23:59:59+00'
+    """).df()
+    con.close()
+    pop = dict(zip(rows["cve_id"], rows["y"]))
+    assert "CVE-PAST" not in pop            # already listed before D -> excluded
+    assert "CVE-FUTUREPUB" not in pop       # not yet published at D -> excluded
+    assert pop["CVE-SOON"] == 1             # enters KEV within the window -> positive
+    assert pop["CVE-LATER"] == 0            # enters KEV after the window -> negative, kept
+    assert pop["CVE-NEVER"] == 0
+
+
+def test_assemble_counts_match_expected(store):
+    settings, D, prior = store
+    con = _con(settings)
+    arr = ex._assemble(con, settings, D, ex._epss_file(settings, prior), horizon=30)
+    con.close()
+    # population = SOON, LATER, NEVER (PAST and FUTUREPUB excluded)
+    assert len(arr["y"]) == 3
+    assert int(arr["y"].sum()) == 1         # exactly SOON
+    # lead time of the positive is recorded and lies inside the window
+    d2k = arr["d2k"][arr["y"] == 1][0]
+    assert 0 < d2k <= 30
+
+
+def test_trend_uses_only_prior_snapshot(store):
+    settings, D, prior = store
+    con = _con(settings)
+    arr = ex._assemble(con, settings, D, ex._epss_file(settings, prior), horizon=30)
+    con.close()
+    # EPSS rose 0.10 -> 0.20 between prior and D for SOON and LATER (trend > 0); CVE-NEVER sat
+    # at 0.001 on both snapshots (trend 0). None are is_new (all present in the prior snapshot).
+    assert (arr["x2"] >= 0).all()
+    assert (arr["x2"] > 0).sum() >= 2
+    assert (arr["isnew"] == 0).all()
+
+
+def test_no_prior_snapshot_marks_is_new(settings):
+    D = date(2024, 2, 26)
+    _epss_snapshot(settings, D, [("CVE-A", 0.2)])
+    _kev(settings, [])
+    _nvd(settings, [("CVE-A", date(2023, 1, 1))])
+    con = _con(settings)
+    arr = ex._assemble(con, settings, D, None, horizon=30)  # no prior file available
+    con.close()
+    assert arr["isnew"][0] == 1
+    assert arr["x2"][0] == 0.0               # trend defaults to 0 when no history
+
+
+# --- invariants the report relies on ----------------------------------------
+def test_recalibration_is_monotone_so_within_date_rank_is_identical():
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    epss = rng.random(500)
+    y = (rng.random(500) < epss * 0.1).astype(float)
+    # Platt recalibration is sigmoid(a + b*logit(epss)); strictly monotone in epss for b>0,
+    # so the rank-based ROC-AUC must match raw EPSS exactly.
+    z = np.log(np.clip(epss, 1e-6, 1 - 1e-6) / (1 - np.clip(epss, 1e-6, 1 - 1e-6)))
+    recal = 1 / (1 + np.exp(-(-2.0 + 1.3 * z)))
+    assert ex._roc_auc(epss, y) == pytest.approx(ex._roc_auc(recal, y), abs=1e-9)
+
+
+def test_run_smoke_and_no_leakage_invariants(settings):
+    """A small end-to-end run: enough monthly snapshots and positives to train and score."""
+    import numpy as np
+
+    # 12 monthly snapshots in 2024; a cohort of CVEs, a handful entering KEV each month.
+    months = [date(2024, m, 2) for m in range(1, 13)]
+    # trend snapshots ~28 days before each eval date
+    priors = [date(2023, 12, 5)] + [date(2024, m, 5) for m in range(1, 12)]
+    cves = [f"CVE-X{i:03d}" for i in range(200)]
+    for day in sorted(set(months + priors)):
+        rows = [(c, 0.01 + (i % 50) / 100.0) for i, c in enumerate(cves)]
+        _epss_snapshot(settings, day, rows)
+    # 5 CVEs enter KEV in the window after each eval month (distinct CVEs each time)
+    kev_rows = []
+    for j, day in enumerate(months):
+        for k in range(5):
+            kev_rows.append((cves[j * 5 + k], day.replace(day=20)))
+    _kev(settings, kev_rows)
+    _nvd(settings, [(c, date(2023, 1, 1)) for c in cves])
+
+    out = ex.run(settings, horizon=30, neg_ratio=20, min_train_pos=1, start=date(2024, 1, 1))
+    # structure
+    assert out["horizon_days"] == 30
+    assert set(out["models"]) == set(ex.MODELS)
+    assert out["walk_forward"]["positives"] >= 1
+    # Recalibration is monotone in EPSS, so it cannot change discrimination: the distance of the
+    # within-date ROC-AUC from 0.5 is identical to raw EPSS (direction may flip if the fit learns
+    # b<0 on this degenerate synthetic data; on real data b>0 and the values match directly).
+    raw_w = out["models"]["raw_epss"]["roc_auc_within_date_mean"]
+    pla_w = out["models"]["epss_platt"]["roc_auc_within_date_mean"]
+    assert abs(raw_w - 0.5) == pytest.approx(abs(pla_w - 0.5), abs=1e-6)
+    # base_rate has a Brier but no ranking metrics
+    assert "roc_auc_pooled" not in out["models"]["base_rate"]
+    assert out["models"]["base_rate"]["brier_skill_vs_base_rate"] == pytest.approx(0.0, abs=1e-9)
+    # every positive is a distinct CVE (no overlapping-window double count)
+    assert "distinct" in out["repeated_cves_and_overlap"] or "only one date" in out["repeated_cves_and_overlap"]
