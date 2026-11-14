@@ -245,9 +245,9 @@ def page_pipeline() -> None:
                              min_value=date(2021, 4, 14), max_value=today)
         end = b.date_input(t("pipeline.backfill_to"), today - timedelta(days=1),
                            min_value=date(2021, 4, 14), max_value=today)
-        step = c.radio(t("pipeline.backfill_step"), [1, 7],
-                       format_func=lambda n: t("pipeline.backfill_daily" if n == 1 else "pipeline.backfill_weekly"),
-                       horizontal=True)
+        step_names = {1: t("pipeline.backfill_daily"), 7: t("pipeline.backfill_weekly")}
+        step = c.radio(t("pipeline.backfill_step"), list(step_names),
+                       format_func=step_names.get, horizontal=True)
         d.write("")
         if d.button(t("pipeline.backfill_run")):
             try:
