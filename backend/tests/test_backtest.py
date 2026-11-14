@@ -64,13 +64,13 @@ def test_a_steady_pace_is_predicted_well_and_an_empty_category_is_predicted_as_e
     assert firewall and cms
 
     # one exploitation every 50 days, so about 1.8 in 90 days
-    predicted = [e["predictions"]["recent_rate"]["expected"] for e in firewall]
+    predicted = [e["predictions"]["recent_rate_365"]["expected"] for e in firewall]
     assert 1.0 <= sum(predicted) / len(predicted) <= 2.6
     assert all(e["observed"] == 0 for e in cms)
-    assert all(e["predictions"]["recent_rate"]["expected"] == 0 for e in cms)
+    assert all(e["predictions"]["recent_rate_365"]["expected"] == 0 for e in cms)
 
     scores = {m["method"]: m for m in out["methods"]}
-    assert set(scores) == {"recent_rate", "volume_rate"}
+    assert set(scores) == {"recent_rate_90", "recent_rate_180", "recent_rate_365", "volume_rate"}
     assert all(0 <= s["interval_coverage"] <= 1 for s in scores.values())
     assert out["methods"][0]["mean_absolute_error"] <= out["methods"][-1]["mean_absolute_error"]
 

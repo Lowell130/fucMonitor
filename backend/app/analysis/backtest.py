@@ -31,7 +31,9 @@ from ..queries import _nvd_files, _products_table, nvd_latest
 from ..sources import SOURCES
 from .exploitation import HORIZONS, poisson_interval
 
-LOOKBACK_DAYS = 365
+# How far back each "recent rate" method looks. A short window follows a rising trend
+# sooner; a long one is steadier. The backtest decides which wins rather than taste.
+LOOKBACKS = (90, 180, 365)
 SHARE_WINDOW_DAYS = 730
 
 
@@ -86,16 +88,19 @@ def run(settings: Settings, horizon: int = 90, step_days: int = 30, points: int 
             "CREATE TEMP TABLE evaluation_dates AS SELECT unnest(?::DATE[]) AS as_of", [starts]
             # `at` is reserved in SQL (AT TIME ZONE), so the column is named as_of.
         )
+        recent_counts = ",\n                   ".join(
+            f"count(*) FILTER (WHERE exploited_date >= as_of - INTERVAL {days} DAY "
+            f"AND exploited_date < as_of) AS events_{days}"
+            for days in LOOKBACKS
+        )
         rows = con.execute(
             f"""
             WITH pairs AS (SELECT d.as_of, f.* FROM evaluation_dates d, facts f)
             SELECT as_of, category,
                    -- what was known on the day, and nothing more
-                   count(*) FILTER (
-                       WHERE exploited_date >= as_of - INTERVAL {LOOKBACK_DAYS} DAY AND exploited_date < as_of
-                   ) AS recent_events,
+                   {recent_counts},
                    count(DISTINCT CASE
-                       WHEN published_date >= as_of - INTERVAL {LOOKBACK_DAYS} DAY AND published_date < as_of
+                       WHEN published_date >= as_of - INTERVAL 365 DAY AND published_date < as_of
                        THEN cve_id END) AS recent_cves,
                    count(DISTINCT CASE
                        WHEN published_date >= as_of - INTERVAL {SHARE_WINDOW_DAYS} DAY
@@ -117,18 +122,20 @@ def run(settings: Settings, horizon: int = 90, step_days: int = 30, points: int 
     finally:
         con.close()
 
-    scale = horizon / LOOKBACK_DAYS
     evaluations = []
-    errors: dict[str, list[float]] = {"recent_rate": [], "volume_rate": []}
-    inside: dict[str, list[bool]] = {"recent_rate": [], "volume_rate": []}
-    for as_of, category, recent_events, recent_cves, eligible, exploited_in_window, observed in rows:
+    errors: dict[str, list[float]] = {}
+    inside: dict[str, list[bool]] = {}
+    for row in rows:
+        as_of, category = row[0], row[1]
+        events = dict(zip(LOOKBACKS, row[2 : 2 + len(LOOKBACKS)]))
+        recent_cves, eligible, exploited_in_window, observed = row[2 + len(LOOKBACKS) :]
         share = exploited_in_window / eligible if eligible else 0.0
-        predictions = {
-            "recent_rate": recent_events * scale,
-            "volume_rate": recent_cves * scale * share,
-        }
+        predictions = {f"recent_rate_{days}": events[days] * horizon / days for days in LOOKBACKS}
+        predictions["volume_rate"] = recent_cves * (horizon / 365) * share
         entry = {"at": as_of.isoformat(), "category": category, "observed": observed, "predictions": {}}
         for method, value in predictions.items():
+            errors.setdefault(method, [])
+            inside.setdefault(method, [])
             low, high = poisson_interval(value)
             entry["predictions"][method] = {
                 "expected": round(value, 2),
