@@ -100,12 +100,17 @@ def signal_check(settings: Settings, lead_days: int = 30, threshold: float = 2.0
             WINDOW w AS (PARTITION BY category ORDER BY day
                         ROWS BETWEEN {int(baseline_days)} PRECEDING AND 1 PRECEDING)
         ),
+        -- Filter to the ~2k exploited CVEs *before* unnesting products: otherwise every
+        -- call expands all 425k catalogue rows, which is what made this take 45 seconds.
+        kev AS (
+            SELECT cve_id, products, cisa_exploit_add AS expl_date
+            FROM ({nvd_latest()}) WHERE cisa_exploit_add IS NOT NULL
+        ),
         exploited AS (
-            SELECT DISTINCT p.category, n.cve_id,
-                   coalesce(n.cisa_exploit_add, CAST(n.published AS DATE)) AS expl_date
-            FROM ({nvd_latest()}) n, unnest(n.products) AS u(product)
+            SELECT DISTINCT p.category, k.cve_id, k.expl_date
+            FROM kev k, unnest(k.products) AS u(product)
             JOIN read_parquet(?) p ON p.product = u.product
-            WHERE p.category <> 'unmapped' AND n.cisa_exploit_add IS NOT NULL
+            WHERE p.category <> 'unmapped'
         ),
         horizon AS (SELECT max(expl_date) AS last_day FROM exploited),
         joined AS (
