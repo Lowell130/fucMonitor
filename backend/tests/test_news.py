@@ -206,6 +206,19 @@ from app.enrich import news as enrich  # noqa: E402
         ("Windows Internet Connection Sharing (ICS) Elevation of Privilege Vulnerability", "primary",
          ["CVE-2026-119859"], "vulnerability_disclosure", False, "official", []),
         ("ICS advisory: flaws in PLC firmware", "primary", [], "cyber_physical", False, "official", []),
+        # the US flight ground stop of 13 November
+        ("FAA Ground Stop Issued Due to 'Extraordinary Circumstances'", "specialist", [],
+         "service_disruption", False, "reported", ["aviation"]),
+        ("Fbi, 'blocco aereo Usa non è dovuto ad attacco informatico'", "general", [],
+         "service_disruption", False, "reported", ["aviation"]),
+        # a law granting sabotage powers is not a sabotage incident
+        ("German parliament passes law giving spy agencies hacking, sabotage powers", "specialist", [],
+         "other", False, "reported", ["government"]),
+        # naming a culprit is a claim, whoever makes it
+        ("France Blames Iran for Sabotage Attack on Refrigeration Controllers at 700 Retailers",
+         "specialist", [], "cyber_physical", False, "unverified", ["retail_food"]),
+        ("U.S. Agencies Warn Refrigeration Controller Attacks Could Cause Fires", "primary", [],
+         "cyber_physical", False, "official", []),
     ],
 )
 def test_classification_rules(title, kind, cves, event, exploited, claim, sectors):

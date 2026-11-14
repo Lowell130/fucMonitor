@@ -1,25 +1,296 @@
 {
-  "version": "2026.11.12-2",
+  "version": "2026.11.14-1",
   "note": "Keyword rules for news items, English and Italian. Patterns are regular expressions matched on lower-cased title + summary; \\b is added on the left automatically. Crude by design: they label, they do not understand. Bump 'version' on every change to the rules or to the story grouping, so derived data is rebuilt.",
   "event_types": [
-    {"id": "hoax_disruption", "patterns": ["bomb (threat|hoax|scare)s?", "hoax", "swatting", "false alarms?", "allarm[ei] bomba", "fals[oi] allarm[ei]", "minacc[ei]a? di bomb[ae]", "mail minator"]},
-    {"id": "ransomware", "patterns": ["ransomware", "ransom (demand|note|payment)", "double extortion", "riscatto", "lockbit", "data[- ]leak site"]},
-    {"id": "cyber_physical", "patterns": ["scada", "industrial control", "ics[- ](advisor|security|system|environment|device)", "operational technology", "\\bot (network|system|environment)s?", "plc\\b", "building automation", "water (plant|utility|treatment)", "power grid", "refrigerat", "frigorifer", "surgelat", "impiant[oi] industrial", "rete elettrica", "sabotag"]},
-    {"id": "data_breach", "patterns": ["data breach", "data leak", "leaked (data|records|database)", "stolen (data|records|credentials)", "exposed (data|records|database)", "records (exposed|stolen|leaked)", "violazione (dei|di) dati", "furto di dati", "dati (rubati|trafugati|esposti|sottratti)", "esfiltra"]},
-    {"id": "service_disruption", "patterns": ["ddos", "denial[- ]of[- ]service attack", "knocked offline", "taken offline", "outage", "fuori servizio", "sit[oi] (web )?(irraggiungibil|bloccat|in tilt)", "servizi (bloccati|interrotti)"]}
+    {
+      "id": "hoax_disruption",
+      "patterns": [
+        "bomb (threat|hoax|scare)s?",
+        "hoax",
+        "swatting",
+        "false alarms?",
+        "allarm[ei] bomba",
+        "fals[oi] allarm[ei]",
+        "minacc[ei]a? di bomb[ae]",
+        "mail minator"
+      ]
+    },
+    {
+      "id": "ransomware",
+      "patterns": [
+        "ransomware",
+        "ransom (demand|note|payment)",
+        "double extortion",
+        "riscatto",
+        "lockbit",
+        "data[- ]leak site"
+      ]
+    },
+    {
+      "id": "cyber_physical",
+      "patterns": [
+        "scada",
+        "industrial control",
+        "ics[- ](advisor|security|system|environment|device)",
+        "operational technology",
+        "\\bot (network|system|environment)s?",
+        "plc\\b",
+        "building automation",
+        "water (plant|utility|treatment)",
+        "power grid",
+        "refrigerat",
+        "frigorifer",
+        "surgelat",
+        "impiant[oi] industrial",
+        "rete elettrica",
+        "sabotag\\w*\\s+(attack|campaign|operation|against|of|on)",
+        "(attacco|azione|atto|atti|caso|casi) di sabotaggio",
+        "sabotaggio (di|del|della|dei|delle|ai|alle)"
+      ]
+    },
+    {
+      "id": "data_breach",
+      "patterns": [
+        "data breach",
+        "data leak",
+        "leaked (data|records|database)",
+        "stolen (data|records|credentials)",
+        "exposed (data|records|database)",
+        "records (exposed|stolen|leaked)",
+        "violazione (dei|di) dati",
+        "furto di dati",
+        "dati (rubati|trafugati|esposti|sottratti)",
+        "esfiltra"
+      ]
+    },
+    {
+      "id": "service_disruption",
+      "patterns": [
+        "ddos",
+        "denial[- ]of[- ]service attack",
+        "knocked offline",
+        "taken offline",
+        "outage",
+        "fuori servizio",
+        "sit[oi] (web )?(irraggiungibil|bloccat|in tilt)",
+        "servizi (bloccati|interrotti)",
+        "ground stop",
+        "air traffic (control|system)s?",
+        "airspace closed",
+        "flights? (grounded|halted|suspended)",
+        "blocco (aereo|dei voli|del traffico)",
+        "voli (bloccati|sospesi|fermi)",
+        "traffico aereo (bloccato|fermo|in tilt)"
+      ]
+    }
   ],
-  "exploitation": ["actively exploited", "active exploitation", "exploited in the wild", "exploitation in the wild", "under (active )?attack", "being exploited", "exploited (as a )?zero[- ]day", "zero[- ]day (attack|exploit)", "known exploited", "exploitation (detected|observed|attempts)", "mass exploitation", "sfruttat[aoie] attivamente", "sfruttamento attivo", "attivamente sfruttat", "sfruttat[aoie] in rete", "exploit in circolazione", "attacchi in corso"],
-  "disclosure": ["vulnerabilit", "security (update|advisory|bulletin|patch)", "patch(es|ed)?\\b", "advisor(y|ies)", "aggiornament[oi] di sicurezza", "risolt[aoie]", "sanat[aoie]", "bollettino"],
-  "unverified": ["alleged(ly)?", "reportedly", "unconfirmed", "rumou?r(s|ed)?", "claims? (to|of|that|responsibility)", "claimed", "suspected", "purported(ly)?", "presunt[aoie]", "rivendic", "non confermat", "ipotesi", "pista\\b", "sospett", "secondo (fonti|indiscrezioni)", "sarebbe(ro)?\\b"],
+  "exploitation": [
+    "actively exploited",
+    "active exploitation",
+    "exploited in the wild",
+    "exploitation in the wild",
+    "under (active )?attack",
+    "being exploited",
+    "exploited (as a )?zero[- ]day",
+    "zero[- ]day (attack|exploit)",
+    "known exploited",
+    "exploitation (detected|observed|attempts)",
+    "mass exploitation",
+    "sfruttat[aoie] attivamente",
+    "sfruttamento attivo",
+    "attivamente sfruttat",
+    "sfruttat[aoie] in rete",
+    "exploit in circolazione",
+    "attacchi in corso"
+  ],
+  "disclosure": [
+    "vulnerabilit",
+    "security (update|advisory|bulletin|patch)",
+    "patch(es|ed)?\\b",
+    "advisor(y|ies)",
+    "aggiornament[oi] di sicurezza",
+    "risolt[aoie]",
+    "sanat[aoie]",
+    "bollettino"
+  ],
+  "unverified": [
+    "alleged(ly)?",
+    "reportedly",
+    "unconfirmed",
+    "rumou?r(s|ed)?",
+    "claims? (to|of|that|responsibility)",
+    "claimed",
+    "suspected",
+    "purported(ly)?",
+    "presunt[aoie]",
+    "rivendic",
+    "non confermat",
+    "ipotesi",
+    "pista\\b",
+    "sospett",
+    "secondo (fonti|indiscrezioni)",
+    "sarebbe(ro)?\\b",
+    "blames?\\b",
+    "accuses?\\b",
+    "attributed to",
+    "state[- ]sponsored",
+    "[a-z]+-linked\\b",
+    "accusa\\b",
+    "attribuisc",
+    "attribuit[oai]",
+    "dietro ci sarebbe",
+    "sarebbe stato"
+  ],
   "target_sectors": [
-    {"id": "education", "patterns": ["schools?\\b", "universit", "students?\\b", "campus", "scuol[ae]", "istitut[oi] scolastic", "liceo", "studenti", "ateneo"]},
-    {"id": "aviation", "patterns": ["airports?\\b", "airlines?\\b", "flights?\\b", "aviation", "aircraft", "aeroport", "vol[oi]\\b", "compagni[ae] aere", "aere[oi]\\b"]},
-    {"id": "transport", "patterns": ["railway", "rail (operator|network)", "trains?\\b", "metro\\b", "port authority", "shipping", "logistics", "ferrovi", "tren[oi]\\b", "trasport"]},
-    {"id": "healthcare", "patterns": ["hospitals?\\b", "healthcare", "health (service|system)", "clinic", "patients?\\b", "medical", "ospedal", "sanit", "pazienti", "\\basl\\b"]},
-    {"id": "retail_food", "patterns": ["supermarkets?", "retail(er|ers)?\\b", "grocery", "food (chain|supply)", "supermercat", "grande distribuzione", "negozi\\b", "alimentar"]},
-    {"id": "energy_utilities", "patterns": ["energy", "power (plant|grid|utility)", "electricity", "oil and gas", "pipeline", "water (plant|utility|supply)", "energia", "energetic", "elettric", "acquedott", "gasdott"]},
-    {"id": "government", "patterns": ["government", "ministry", "municipal", "city (council|hall)", "public administration", "parliament", "police", "governo", "minister", "comune\\b", "regione\\b", "pubblica amministrazione", "viminale", "palazzo chigi", "prefettur", "questur"]},
-    {"id": "finance", "patterns": ["banks?\\b", "banking", "financial (services|institution)", "insurance", "crypto(currency)? exchange", "banc[ah]e?\\b", "bancari", "assicurazion", "finanziari"]},
-    {"id": "media_telecom", "patterns": ["broadcaster", "newspaper", "media (outlet|company|group)", "telecom", "mobile operator", "internet provider", "emittent", "testat[ae] giornalistic", "redazion", "operator[ei] telefonic"]}
+    {
+      "id": "education",
+      "patterns": [
+        "schools?\\b",
+        "universit",
+        "students?\\b",
+        "campus",
+        "scuol[ae]",
+        "istitut[oi] scolastic",
+        "liceo",
+        "studenti",
+        "ateneo"
+      ]
+    },
+    {
+      "id": "aviation",
+      "patterns": [
+        "airports?\\b",
+        "airlines?\\b",
+        "flights?\\b",
+        "aviation",
+        "aircraft",
+        "aeroport",
+        "vol[oi]\\b",
+        "compagni[ae] aere",
+        "aere[oi]\\b",
+        "\\bfaa\\b",
+        "ground stop",
+        "air traffic",
+        "airspace",
+        "air navigation",
+        "eurocontrol",
+        "\\bicao\\b",
+        "blocco aereo",
+        "traffico aereo",
+        "spazio aereo",
+        "controllo del traffico aereo",
+        "\\benac\\b",
+        "\\benav\\b"
+      ]
+    },
+    {
+      "id": "transport",
+      "patterns": [
+        "railway",
+        "rail (operator|network)",
+        "trains?\\b",
+        "metro\\b",
+        "port authority",
+        "shipping",
+        "logistics",
+        "ferrovi",
+        "tren[oi]\\b",
+        "trasport"
+      ]
+    },
+    {
+      "id": "healthcare",
+      "patterns": [
+        "hospitals?\\b",
+        "healthcare",
+        "health (service|system)",
+        "clinic",
+        "patients?\\b",
+        "medical",
+        "ospedal",
+        "sanit",
+        "pazienti",
+        "\\basl\\b"
+      ]
+    },
+    {
+      "id": "retail_food",
+      "patterns": [
+        "supermarkets?",
+        "retail(er|ers)?\\b",
+        "grocery",
+        "food (chain|supply)",
+        "supermercat",
+        "grande distribuzione",
+        "negozi\\b",
+        "alimentar"
+      ]
+    },
+    {
+      "id": "energy_utilities",
+      "patterns": [
+        "energy",
+        "power (plant|grid|utility)",
+        "electricity",
+        "oil and gas",
+        "pipeline",
+        "water (plant|utility|supply)",
+        "energia",
+        "energetic",
+        "elettric",
+        "acquedott",
+        "gasdott"
+      ]
+    },
+    {
+      "id": "government",
+      "patterns": [
+        "government",
+        "ministry",
+        "municipal",
+        "city (council|hall)",
+        "public administration",
+        "parliament",
+        "police",
+        "governo",
+        "minister",
+        "comune\\b",
+        "regione\\b",
+        "pubblica amministrazione",
+        "viminale",
+        "palazzo chigi",
+        "prefettur",
+        "questur"
+      ]
+    },
+    {
+      "id": "finance",
+      "patterns": [
+        "banks?\\b",
+        "banking",
+        "financial (services|institution)",
+        "insurance",
+        "crypto(currency)? exchange",
+        "banc[ah]e?\\b",
+        "bancari",
+        "assicurazion",
+        "finanziari"
+      ]
+    },
+    {
+      "id": "media_telecom",
+      "patterns": [
+        "broadcaster",
+        "newspaper",
+        "media (outlet|company|group)",
+        "telecom",
+        "mobile operator",
+        "internet provider",
+        "emittent",
+        "testat[ae] giornalistic",
+        "redazion",
+        "operator[ei] telefonic"
+      ]
+    }
   ]
 }
