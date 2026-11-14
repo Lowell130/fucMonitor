@@ -1,5 +1,5 @@
 {
-  "version": "2026.11.13-2",
+  "version": "2026.11.14-1",
   "note": "Product to technology-category rules. Each pattern is a regular expression matched against 'vendor:product' as NVD writes it (lower case, underscores). Rules are tried in order and the first match wins, so put the specific ones first. Hand-made assignments always win over these. Bump 'version' on every change: the derived table is rebuilt from scratch when it changes.",
   "rules": [
     {
@@ -15,7 +15,15 @@
         "^huawei:(emui|harmonyos)",
         "^xiaomi:",
         "^motorola:",
-        ":(baseband|modem_firmware)$"
+        ":(baseband|modem_firmware)$",
+        "^apple:(visionos|vision_pro)",
+        "^arm:.*(gpu|mali)",
+        "^arm:(bifrost|midgard|valhall)",
+        "^imgtec:",
+        "^imaginationtech",
+        "^nvidia:(tegra|jetson)",
+        "^broadcom:brcm",
+        "^realtek:rtl8"
       ]
     },
     {
@@ -58,7 +66,16 @@
         "^openwrt",
         "^dd-wrt",
         "communication_server",
-        "^broadcom:(bcm|wireless)"
+        "^broadcom:(bcm|wireless)",
+        "^cisco:(rv[0-9]|sg[0-9]|sf[0-9]|wap[0-9]|wrvs|small_business)",
+        "_router_firmware$",
+        "^zte:",
+        "^dlink",
+        "^sagemcom",
+        "^arcadyan",
+        "^actiontec",
+        "^calix",
+        "^adtran"
       ]
     },
     {
@@ -110,7 +127,21 @@
         "^crowdstrike:",
         "^sentinelone:",
         "antivirus",
-        "endpoint_(protection|security)"
+        "endpoint_(protection|security)",
+        "^citrix:netscaler",
+        "^trendmicro:",
+        "^avast",
+        "^avg:",
+        "^malwarebytes",
+        "^sophoslabs",
+        "^clamav",
+        "^snort",
+        "^suricata",
+        "^wazuh",
+        "^rapid7:",
+        "^tenable:",
+        "^qualys:",
+        "^greenbone"
       ]
     },
     {
@@ -456,7 +487,21 @@
         "^redhat:jboss",
         "^jboss",
         "^wildfly",
-        "^liferay:"
+        "^liferay:",
+        "^oracle:(agile|retail|instantis|primavera|hospitality|communications|utilities|financial|banking|insurance|health|siebel|hyperion|endeca|transportation|argus|flexcube|policy_automation|enterprise_(manager|data)|business_intelligence|application_testing|customer)",
+        "^langflow",
+        "^plex:",
+        "^emby",
+        "^jellyfin",
+        "^n8n",
+        "^airbyte",
+        "^dagster",
+        "^mlflow",
+        "^ray_project",
+        "^streamlit",
+        "^gradio",
+        "^huggingface",
+        "^label_studio"
       ]
     },
     {
@@ -513,7 +558,7 @@
         "^golang:",
         "^rust-lang",
         "^dotnet",
-        "^microsoft:\\\\.net",
+        "^microsoft:\\.net",
         "^gnu:(glibc|bash|binutils|tar|gzip)",
         "^libexpat",
         "^libpng",
@@ -576,7 +621,16 @@
         "^discord",
         "^spotify",
         "^audacity",
-        "^blender"
+        "^blender",
+        "^microsoft:(365_apps|office_online|office_web|teams|defender)",
+        "^webkitgtk",
+        "^wpewebkit",
+        "^apple:(webkit|safari)",
+        "^gnome:",
+        "^kde:",
+        "^mozilla:nss",
+        "^zoom:",
+        "^slack:"
       ]
     }
   ]

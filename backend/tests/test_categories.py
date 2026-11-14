@@ -157,9 +157,42 @@ def test_a_cve_profile_carries_its_categories(catalogue):
         ("hp:openview_network_node_manager", "remote_management"),
         ("al-enterprise:omnipcx_enterprise_communication_server", "router_network_edge"),
         ("phpbb:phpbb", "web_cms"),
+        # second pass, against the full catalogue
+        ("apple:visionos", "mobile_device"),
+        ("arm:valhall_gpu_kernel_driver", "mobile_device"),
+        ("citrix:netscaler_application_delivery_controller", "firewall_security_appliance"),
+        ("microsoft:365_apps", "browser_client"),
+        ("webkitgtk:webkitgtk", "browser_client"),
+        (r"webkitgtk:webkitgtk\+", "browser_client"),
+        ("trendmicro:officescan", "firewall_security_appliance"),
+        ("cisco:rv340_firmware", "router_network_edge"),
+        ("oracle:agile_product_lifecycle_management", "enterprise_application"),
+        ("langflow:langflow", "enterprise_application"),
+        # an escaping mistake made this one match a literal backslash, never a dot
+        ("microsoft:.net_framework", "operating_system"),
     ],
 )
 def test_rules_cover_what_the_queue_turned_up(product, category):
+    assert mapping.classify(product)[0] == category
+
+
+@pytest.mark.parametrize(
+    "product, category",
+    [
+        ("fortinet:fortios", "firewall_security_appliance"),
+        ("cisco:ios_xe", "router_network_edge"),
+        ("wordpress:wordpress", "web_cms"),
+        ("vmware:esxi", "virtualization_cloud"),
+        ("oracle:database", "database_storage"),
+        ("microsoft:exchange_server", "mail_collaboration"),
+        ("apple:iphone_os", "mobile_device"),
+        ("microsoft:windows_10", "operating_system"),
+        ("siemens:simatic_s7", "iot_ot_building"),
+        ("ivanti:connect_secure", "vpn_remote_access"),
+    ],
+)
+def test_widening_the_rules_does_not_move_what_already_worked(product, category):
+    """Rules are first-match-wins, so a new pattern can quietly steal an older one."""
     assert mapping.classify(product)[0] == category
 
 
