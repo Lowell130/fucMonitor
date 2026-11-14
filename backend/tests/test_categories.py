@@ -170,6 +170,16 @@ def test_a_cve_profile_carries_its_categories(catalogue):
         ("langflow:langflow", "enterprise_application"),
         # an escaping mistake made this one match a literal backslash, never a dot
         ("microsoft:.net_framework", "operating_system"),
+        # third pass
+        ("redhat:satellite", "remote_management"),
+        ("redhat:software_collections", "operating_system"),
+        ("redhat:gluster_storage_server_for_on-premise", "database_storage"),
+        ("papercut:papercut_ng", "remote_management"),
+        ("citrix:application_delivery_controller_firmware", "firewall_security_appliance"),
+        ("microsoft:server_message_block", "operating_system"),
+        ("fortinet:fortiswitchmanager", "firewall_security_appliance"),
+        ("oracle:http_server", "web_cms"),
+        ("kentico:xperience", "web_cms"),
     ],
 )
 def test_rules_cover_what_the_queue_turned_up(product, category):
@@ -189,6 +199,8 @@ def test_rules_cover_what_the_queue_turned_up(product, category):
         ("microsoft:windows_10", "operating_system"),
         ("siemens:simatic_s7", "iot_ot_building"),
         ("ivanti:connect_secure", "vpn_remote_access"),
+        ("redhat:enterprise_linux", "operating_system"),
+        ("oracle:weblogic_server", "enterprise_application"),
     ],
 )
 def test_widening_the_rules_does_not_move_what_already_worked(product, category):

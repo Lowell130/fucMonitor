@@ -1,5 +1,5 @@
 {
-  "version": "2026.11.14-1",
+  "version": "2026.11.14-2",
   "note": "Product to technology-category rules. Each pattern is a regular expression matched against 'vendor:product' as NVD writes it (lower case, underscores). Rules are tried in order and the first match wins, so put the specific ones first. Hand-made assignments always win over these. Bump 'version' on every change: the derived table is rebuilt from scratch when it changes.",
   "rules": [
     {
@@ -141,7 +141,10 @@
         "^rapid7:",
         "^tenable:",
         "^qualys:",
-        "^greenbone"
+        "^greenbone",
+        "^fortinet:",
+        "^citrix:application_delivery_controller",
+        "^citrix:adc"
       ]
     },
     {
@@ -249,7 +252,19 @@
         "^owncloud",
         "^webcalendar",
         "_cms$",
-        "^cms"
+        "^cms",
+        "^oracle:(http_server|iplanet|glassfish)",
+        "^kentico",
+        "^sitefinity",
+        "^progress:sitefinity",
+        "^bigtreecms",
+        "^statamic",
+        "^october_cms",
+        "^grav",
+        "^bolt",
+        "^pimcore",
+        "^shopware",
+        "^oscommerce"
       ]
     },
     {
@@ -332,7 +347,15 @@
         "^observium",
         "^netbox",
         "control_panel",
-        "network_node_manager"
+        "network_node_manager",
+        "^redhat:(satellite|ansible|insights)",
+        "^papercut",
+        "^spiceworks",
+        "^lansweeper",
+        "^action1",
+        "^ninjarmm",
+        "^atera",
+        "^syncro"
       ]
     },
     {
@@ -368,7 +391,15 @@
         "network_attached_storage",
         "^truenas",
         "^minio",
-        "^ceph"
+        "^ceph",
+        "^redhat:(gluster|ceph)",
+        "^gluster",
+        "^openzfs",
+        "^freenas",
+        "^iomega",
+        "^buffalo",
+        "^seagate",
+        "^lacie"
       ]
     },
     {
@@ -569,7 +600,13 @@
         "^x\\\\.org",
         "^samba:",
         "^isc:(bind|dhcp)",
-        "^ntp:"
+        "^ntp:",
+        "^redhat:(software_collections|enterprise_linux)",
+        "^microsoft:server_message_block",
+        "^microsoft:(windows_subsystem|wsl|powershell|hyper-v_server)",
+        "^centos",
+        "^scientificlinux",
+        "^amazon:(linux|amazon_linux)"
       ]
     },
     {
