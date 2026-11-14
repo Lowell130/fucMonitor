@@ -12,6 +12,9 @@ Local, zero-cost app that forecasts which technology categories will be exploite
   `retrieved_at` (when we saw it). Features for a date may only use what was known that day.
 - Keep exploitation labels separate per source (KEV, VulnCheck, exploit repos, sensors).
 - EPSS is the baseline to beat. Evaluate walk-forward only, never with random splits.
+- A forecast method is chosen by `analysis/backtest.py`, never by taste: it replays past dates
+  using only what was known then. Every method so far runs below the truth, because a trailing
+  estimate lags a rising trend; say so rather than correcting it silently.
 - Say what the system does not see: source coverage is partial.
 
 ## Layout

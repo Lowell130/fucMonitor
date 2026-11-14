@@ -174,9 +174,27 @@ def page_forecast() -> None:
          + base.mark_rule(strokeWidth=2, color="#888").encode(x="low:Q", x2="high:Q")),
         width="stretch",
     )
-    table(rows, ["label", "expected", "low", "high", "recent_cves", "share",
-                 "based_on_exploited", "based_on_eligible"], percent=("share",))
+    table(rows, ["label", "expected", "low", "high", "recent_events", "recent_cves",
+                 "share", "median_days", "last_exploited"], percent=("share",))
     st.caption(t("forecast.table_help"))
+
+    st.subheader(t("forecast.accuracy"))
+    scored = get_cached("/api/v1/analysis/backtest", horizon=horizon, step_days=30, points=24)
+    if scored.get("methods"):
+        best = scored["methods"][0]
+        predicted = sum(e["predictions"].get("recent_rate_365", {}).get("expected", 0)
+                        for e in scored["evaluations"])
+        observed = scored["observed_total"]
+        cols = st.columns(4)
+        cols[0].metric(t("forecast.acc_error"), f"{best['mean_absolute_error']:.2f}")
+        cols[1].metric(t("forecast.acc_coverage"), f"{best['interval_coverage']:.0%}")
+        cols[2].metric(t("forecast.acc_bias"),
+                       f"{(predicted - observed) / observed:+.0%}" if observed else "–")
+        cols[3].metric(t("forecast.acc_points"), str(best["points"]))
+        st.caption(t("forecast.acc_help", start=scored["from"], end=scored["to"]))
+        table([{**m, "label": m["method"]} for m in scored["methods"]],
+              ["label", "mean_absolute_error", "rmse", "interval_coverage", "points"])
+        st.caption(t("forecast.acc_methods"))
 
     st.subheader(t("forecast.rates"))
     flat = []

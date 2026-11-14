@@ -56,8 +56,11 @@ Fatto:
 - Mappatura prodotto → categoria tecnologica: regole a parole chiave, assegnazioni manuali
   prioritarie e coda di revisione ordinata per impatto.
 
-- Tassi storici di sfruttamento per categoria (30/90/365 giorni, con censura corretta),
-  tempo allo sfruttamento e previsione di base volume × tasso con intervalli.
+- Tassi storici di sfruttamento per categoria (30/90/365 giorni, con censura corretta) e
+  tempo allo sfruttamento.
+- Previsione per categoria basata sul tasso recente di sfruttamento, con intervalli di Poisson.
+- Backtest mese per mese che confronta i metodi usando solo ciò che era noto a ogni data: ha
+  scartato il metodo iniziale (volume × quota) e ha scelto quello in uso.
 
 Limiti noti delle notizie:
 
