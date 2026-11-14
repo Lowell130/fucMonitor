@@ -11,7 +11,8 @@ from pathlib import Path as PathLib
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Path, Query
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Path, Query, Request
+from fastapi.responses import JSONResponse
 
 from . import queries, runner, state
 from .config import get_settings
@@ -80,6 +81,20 @@ def _source(name: str):
     if name not in SOURCES:
         raise HTTPException(404, f"Unknown source '{name}'. Known: {', '.join(SOURCES)}")
     return SOURCES[name]
+
+
+@app.exception_handler(Exception)
+def unhandled_error(request: Request, exc: Exception) -> JSONResponse:
+    """Say what went wrong instead of a bare 500.
+
+    This runs on one person's own machine against their own data, so the detail is for
+    them; it is the difference between a page that is broken and one that says why.
+    """
+    log.exception("unhandled error on %s", request.url.path)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {exc}"[:2000], "path": request.url.path},
+    )
 
 
 @app.get("/health", tags=["system"])

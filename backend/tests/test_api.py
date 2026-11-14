@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import runner
+from app import queries, runner
 from app.main import app
 
 
@@ -62,3 +62,16 @@ def test_taxonomy_has_stable_ids_and_both_languages(api):
         assert len(ids) == len(set(ids))
         assert all(c["en"] and c["it"] for c in tax[group])
     assert 12 <= len(tax["technology_categories"]) <= 15
+
+
+def test_an_unexpected_failure_says_what_went_wrong(settings, monkeypatch):
+    """A bare 500 on your own machine against your own data helps nobody."""
+    def boom(*args, **kwargs):
+        raise RuntimeError("the catalogue is on fire")
+
+    monkeypatch.setattr(queries, "overview", boom)
+    # The test client re-raises by default; the browser sees what this one sees.
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/api/v1/overview")
+    assert response.status_code == 500
+    assert response.json() == {"detail": "RuntimeError: the catalogue is on fire", "path": "/api/v1/overview"}
