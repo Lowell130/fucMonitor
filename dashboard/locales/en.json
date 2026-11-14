@@ -258,7 +258,7 @@
   "col.interval_coverage": "Range held",
   "col.points": "Forecasts",
   "nav.scans": "Early warning (scanning)",
-  "scans.intro": "How much the Internet is being scanned for each kind of service, from the SANS Internet Storm Center. A jump often comes before a vulnerability is confirmed exploited. Aggregated sensor data: no individual address is fetched, stored or shown.",
+  "scans.intro": "How much the Internet is being scanned for each kind of service, from the SANS Internet Storm Center. It shows what is under unusual attention right now. Whether that precedes exploitation is a claim to be tested, not assumed — and on our data so far it does not clearly (see below). Aggregated sensor data: no individual address is fetched, stored or shown.",
   "scans.no_data": "No scanning data yet. Open Pipeline and run the scanning source, or backfill its history.",
   "scans.surges": "Being probed more than usual",
   "scans.surge_line": "**{service}** (port {port}, {category}) — {ratio}× its usual level, {z} standard deviations above baseline.",

@@ -108,9 +108,11 @@ quindi ogni numero è un minimo. La pagina lo dice, insieme agli altri limiti.
 ## Allerta precoce (scansioni)
 
 Il SANS Internet Storm Center (DShield) aggrega i log di molti sensori in totali giornalieri
-per porta: quante macchine distinte scandagliano ogni servizio su Internet. Un'impennata di
-scansioni su un servizio precede spesso la conferma pubblica che una sua vulnerabilità viene
-sfruttata, quindi copre il buco fra «pubblicata» e «sfruttata» che le previsioni cercano.
+per porta: quante macchine distinte scandagliano ogni servizio su Internet. L'ipotesi era che
+un'impennata di scansioni precedesse la conferma pubblica dello sfruttamento; il controllo
+(`/api/v1/analysis/scan-signal-check`) l'ha misurata sui dati raccolti e **non** la conferma a
+livello di categoria. Resta quindi un segnale di situazione — cosa è sotto attenzione ora — mai
+fuso nella previsione.
 
 Nessun indirizzo singolo viene mai raccolto, archiviato o mostrato: solo numeri aggregati per
 porta. Ogni porta è legata in modo approssimativo a una categoria tecnologica

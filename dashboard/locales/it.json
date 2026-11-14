@@ -258,7 +258,7 @@
   "col.interval_coverage": "Intervallo centrato",
   "col.points": "Previsioni",
   "nav.scans": "Allerta precoce (scansioni)",
-  "scans.intro": "Quanto Internet viene scandagliato per ogni tipo di servizio, dal SANS Internet Storm Center. Un'impennata precede spesso la conferma che una vulnerabilità viene sfruttata. Dati di sensori aggregati: nessun indirizzo singolo viene raccolto, archiviato o mostrato.",
+  "scans.intro": "Quanto Internet viene scandagliato per ogni tipo di servizio, dal SANS Internet Storm Center. Mostra cosa è sotto attenzione insolita adesso. Se questo anticipi lo sfruttamento è un'ipotesi da verificare, non da dare per scontata — e sui nostri dati finora non lo fa in modo chiaro (vedi sotto). Dati di sensori aggregati: nessun indirizzo singolo viene raccolto, archiviato o mostrato.",
   "scans.no_data": "Nessun dato di scansione. Apri Pipeline e avvia la fonte scansioni, o recuperane lo storico.",
   "scans.surges": "Sotto esame più del solito",
   "scans.surge_line": "**{service}** (porta {port}, {category}) — {ratio}× il livello abituale, {z} deviazioni standard sopra la media.",
