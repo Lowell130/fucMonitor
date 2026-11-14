@@ -5,7 +5,7 @@ import logging
 import time
 import threading
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path as PathLib
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -186,6 +186,21 @@ def _run_quietly(name: str, day: date | None) -> bool:
     except runner.AlreadyRunning:
         log.info("%s: already running, request dropped", name)
         return False
+
+
+def _backfill_scans(years: int) -> None:
+    from datetime import date as _date
+
+    settings = get_settings()
+    source = SOURCES["scans"]
+    today = state.utcnow().date()
+    with runner.http_client(settings) as client:
+        for year in range(years):
+            end = today - timedelta(days=365 * year)
+            try:
+                runner.run_source(settings, "scans", "backfill", client=client, backfill_day=end)
+            except runner.AlreadyRunning:
+                log.info("scans busy, backfill year %s skipped", year)
 
 
 def _backfill(days: list[date]) -> None:
@@ -421,6 +436,39 @@ def exploitation_backtest(
         return backtest.run(get_settings(), horizon, step_days, points)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/api/v1/scans/trend", tags=["scanning"])
+def scans_trend(
+    by: str = Query("category", pattern="^(category|port)$"),
+    days: int = Query(90, ge=7, le=1095),
+    metric: str = Query("sources", pattern="^(sources|records|targets)$"),
+) -> dict:
+    """Aggregate scanning activity over time. Aggregated sensor data, no individual address."""
+    return queries.scans_trend(get_settings(), by, days, metric)
+
+
+@app.get("/api/v1/scans/surges", tags=["scanning"])
+def scans_surges(
+    baseline_days: int = Query(30, ge=7, le=180),
+    min_z: float = Query(2.0, ge=0.0, le=20.0),
+) -> dict:
+    """Services being probed more than usual right now, against their own trailing baseline."""
+    return queries.scans_surges(get_settings(), baseline_days, min_z)
+
+
+@app.get("/api/v1/scans/ports", tags=["scanning"])
+def scans_ports() -> dict:
+    from .sources.scans import load_ports
+
+    return {"items": load_ports(get_settings())}
+
+
+@app.post("/api/v1/sources/scans/backfill", status_code=202, tags=["pipeline"])
+def backfill_scans(background: BackgroundTasks, years: int = Query(2, ge=1, le=5)) -> dict:
+    """Fetch several years of scanning history, one year at a time per watched port."""
+    background.add_task(_backfill_scans, years)
+    return {"accepted": True, "years": years}
 
 
 @app.get("/api/v1/taxonomy", tags=["data"])

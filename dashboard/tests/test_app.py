@@ -100,6 +100,17 @@ FULL = {
     "/api/v1/analysis/time-to-exploit": {"items": [
         {"category": "firewall_security_appliance", "exploited": 11, "median_days": 12, "p25_days": 3,
          "p75_days": 40, "within_7": 4, "within_30": 8, "share_within_7": 0.36, "share_within_30": 0.72}]},
+    "/api/v1/scans/surges": {"baseline_days": 30, "min_z": 2.0, "surges": [
+        {"port": 445, "category": "operating_system", "service": "SMB", "as_of": "2026-11-13",
+         "latest_sources": 60000, "baseline_mean": 15000.0, "baseline_sd": 3000.0, "baseline_days": 29,
+         "z": 15.0, "ratio": 4.0}],
+        "all": [{"port": 445, "category": "operating_system", "service": "SMB", "as_of": "2026-11-13",
+         "latest_sources": 60000, "baseline_mean": 15000.0, "baseline_sd": 3000.0, "baseline_days": 29,
+         "z": 15.0, "ratio": 4.0}]},
+    "/api/v1/scans/trend": {"by": "category", "days": 90, "metric": "sources", "items": [
+        {"day": "2026-11-12", "key": "operating_system", "value": 15000},
+        {"day": "2026-11-13", "key": "operating_system", "value": 60000},
+        {"day": "2026-11-13", "key": "web_cms", "value": 30000}]},
     "/api/v1/categories/summary": {"items": [
         {"category": "web_cms", "cves": 50000, "kev_cves": 300, "kev_share": 0.006,
          "recent_cves": 20000, "last_published": "2026-11-12"},
@@ -138,6 +149,8 @@ EMPTY = {
     "/api/v1/analysis/backtest": {"horizon": 90, "evaluations": [], "methods": [], "observed_total": 0},
     "/api/v1/analysis/rates": {"horizons": [30, 90, 365], "items": []},
     "/api/v1/analysis/time-to-exploit": {"items": []},
+    "/api/v1/scans/surges": {"baseline_days": 30, "min_z": 2.0, "surges": [], "all": []},
+    "/api/v1/scans/trend": {"by": "category", "days": 90, "metric": "sources", "items": []},
     "/api/v1/categories/summary": {"items": []},
     "/api/v1/categories/products": {"total": 0, "items": []},
     "/api/v1/exploits/overview": {"cves": 0, "providers": []},
@@ -153,7 +166,7 @@ EMPTY = {
 
 @pytest.mark.parametrize("responses", [FULL, EMPTY], ids=["full", "empty"])
 @pytest.mark.parametrize("lang", ["en", "it"])
-@pytest.mark.parametrize("page", ["overview", "forecast", "pipeline", "news", "vulns", "categories", "kev", "epss"])
+@pytest.mark.parametrize("page", ["overview", "forecast", "scans", "pipeline", "news", "vulns", "categories", "kev", "epss"])
 def test_page_renders(monkeypatch, responses, lang, page):
     def fake(method, url, params=None, json=None, timeout=None):
         path = httpx.URL(url).path
@@ -167,7 +180,7 @@ def test_page_renders(monkeypatch, responses, lang, page):
     at.sidebar.radio[0].set_value(page).run()
     assert not at.exception, at.exception
     visible = " ".join(str(e.value) for e in [*at.header, *at.subheader, *at.caption, *at.info])
-    for prefix in ("nav.", "overview.", "pipeline.", "common.", "epss.", "kev.", "app.", "news.", "kind.", "vulns.", "categories.", "assigned.", "forecast."):
+    for prefix in ("nav.", "overview.", "pipeline.", "common.", "epss.", "kev.", "app.", "news.", "kind.", "vulns.", "categories.", "assigned.", "forecast.", "scans."):
         assert prefix not in visible, visible
 
 

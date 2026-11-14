@@ -572,3 +572,84 @@ def category_products(
         params + [limit, offset],
     )
     return {"total": total, "items": items}
+
+
+# --- scanning activity --------------------------------------------------------
+def _scan_files(settings: Settings) -> list[str]:
+    return SOURCES["scans"].curated_files(settings)
+
+
+def scans_trend(settings: Settings, by: str, days: int, metric: str = "sources") -> dict:
+    """Daily scanning activity, by technology category or by port. `metric` is one of
+    sources (distinct scanning IPs, the signal we trust), records or targets."""
+    files = _scan_files(settings)
+    if metric not in ("sources", "records", "targets"):
+        raise ValueError("metric must be sources, records or targets")
+    if not files:
+        return {"by": by, "days": days, "metric": metric, "items": []}
+    from .sources.scans import load_ports
+
+    ports = load_ports(settings)
+    cat = {p["port"]: p["category"] for p in ports}
+    svc = {p["port"]: p["service"] for p in ports}
+    mapping = cat if by == "category" else svc
+    # A VALUES list turns the port->label map into a join without a second file.
+    pairs = ", ".join(f"({port}, '{label}')" for port, label in mapping.items())
+    items = _rows(
+        f"""SELECT observed_date AS day, m.label AS key, sum({metric}) AS value
+            FROM read_parquet(?) s
+            JOIN (VALUES {pairs}) AS m(port, label) ON m.port = s.port
+            WHERE observed_date > current_date - ?::INTEGER AND observed_date <= current_date
+            GROUP BY 1, 2 ORDER BY 1, 2""",
+        [files, days],
+    )
+    return {"by": by, "days": days, "metric": metric, "items": items}
+
+
+def scans_surges(settings: Settings, baseline_days: int = 30, min_z: float = 2.0) -> dict:
+    """Ports whose recent scanning stands out against their own trailing baseline.
+
+    For each port: the most recent day's distinct sources, compared with the mean and spread
+    of the `baseline_days` before it. A high z-score means more machines than usual are probing
+    that service right now. This is the early-warning headline; it says something changed, not
+    that anyone has been attacked.
+    """
+    files = _scan_files(settings)
+    if not files:
+        return {"baseline_days": baseline_days, "items": []}
+    from .sources.scans import load_ports
+
+    ports = {p["port"]: p for p in load_ports(settings)}
+    pairs = ", ".join(f"({p['port']}, '{p['category']}', '{p['service']}')" for p in ports.values())
+    rows = _rows(
+        f"""
+        WITH recent AS (
+            SELECT port, observed_date, sources,
+                   row_number() OVER (PARTITION BY port ORDER BY observed_date DESC) AS r
+            FROM read_parquet(?)
+            WHERE observed_date > current_date - ?::INTEGER
+        ),
+        latest AS (SELECT port, observed_date, sources FROM recent WHERE r = 1),
+        base AS (
+            SELECT port, avg(sources) AS mean, stddev_samp(sources) AS sd, count(*) AS n
+            FROM recent WHERE r > 1 GROUP BY port
+        )
+        SELECT l.port, m.category, m.service, l.observed_date AS as_of,
+               l.sources AS latest_sources,
+               base.mean AS baseline_mean, base.sd AS baseline_sd, base.n AS baseline_days,
+               CASE WHEN base.sd > 0 THEN (l.sources - base.mean) / base.sd END AS z,
+               CASE WHEN base.mean > 0 THEN l.sources / base.mean END AS ratio
+        FROM latest l
+        JOIN base USING (port)
+        JOIN (VALUES {pairs}) AS m(port, category, service) ON m.port = l.port
+        WHERE base.n >= 5
+        ORDER BY z DESC NULLS LAST
+        """,
+        [files, baseline_days + 1],
+    )
+    for row in rows:
+        for key in ("baseline_mean", "baseline_sd", "z", "ratio"):
+            if row[key] is not None:
+                row[key] = round(row[key], 3)
+    surges = [r for r in rows if r["z"] is not None and r["z"] >= min_z]
+    return {"baseline_days": baseline_days, "min_z": min_z, "surges": surges, "all": rows}

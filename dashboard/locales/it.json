@@ -256,5 +256,19 @@
   "col.mean_absolute_error": "Errore medio",
   "col.rmse": "RMSE",
   "col.interval_coverage": "Intervallo centrato",
-  "col.points": "Previsioni"
+  "col.points": "Previsioni",
+  "nav.scans": "Allerta precoce (scansioni)",
+  "scans.intro": "Quanto Internet viene scandagliato per ogni tipo di servizio, dal SANS Internet Storm Center. Un'impennata precede spesso la conferma che una vulnerabilità viene sfruttata. Dati di sensori aggregati: nessun indirizzo singolo viene raccolto, archiviato o mostrato.",
+  "scans.no_data": "Nessun dato di scansione. Apri Pipeline e avvia la fonte scansioni, o recuperane lo storico.",
+  "scans.surges": "Sotto esame più del solito",
+  "scans.surge_line": "**{service}** (porta {port}, {category}) — {ratio}× il livello abituale, {z} deviazioni standard sopra la media.",
+  "scans.surge_help": "Confronto con gli ultimi 30 giorni dello stesso servizio. Significa che più macchine del solito lo stanno scandagliando ora, non che qualcosa sia stato violato.",
+  "scans.no_surge": "Al momento niente viene scandagliato in modo sensibilmente superiore alla propria media.",
+  "scans.trend": "Scansioni nel tempo",
+  "scans.days": "Giorni",
+  "scans.show": "Mostra",
+  "scans.axis": "Sorgenti di scansione distinte",
+  "scans.trend_help": "Indirizzi sorgente distinti osservati al giorno, sommati sulle porte legate a ciascuna categoria. Una porta è legata a una categoria solo in modo approssimativo: conta l'andamento nel tempo, non l'altezza assoluta.",
+  "scans.about": "Cos'è, e cosa non è",
+  "scans.about_text": "- **Fonte**: il SANS Internet Storm Center (DShield), che aggrega i log di molti sensori in totali giornalieri per porta. Non raccogliamo né archiviamo alcun indirizzo singolo.\\n- **Le porte rappresentano le categorie in modo approssimativo.** Molti servizi condividono una porta e la 443 porta quasi tutto: è scansione di servizi *associati a* una categoria, non di un prodotto e mai di un bersaglio.\\n- **È un segnale precoce, non una prova.** Un'impennata indica attenzione; precede lo sfruttamento abbastanza spesso da valere la pena, ma non sempre, e la quiete non è sicurezza.\\n- **Una rete di sensori vede una fetta di Internet.** Una variazione può essere un cambiamento nei sensori più che nel mondo."
 }

@@ -256,5 +256,19 @@
   "col.mean_absolute_error": "Average error",
   "col.rmse": "RMSE",
   "col.interval_coverage": "Range held",
-  "col.points": "Forecasts"
+  "col.points": "Forecasts",
+  "nav.scans": "Early warning (scanning)",
+  "scans.intro": "How much the Internet is being scanned for each kind of service, from the SANS Internet Storm Center. A jump often comes before a vulnerability is confirmed exploited. Aggregated sensor data: no individual address is fetched, stored or shown.",
+  "scans.no_data": "No scanning data yet. Open Pipeline and run the scanning source, or backfill its history.",
+  "scans.surges": "Being probed more than usual",
+  "scans.surge_line": "**{service}** (port {port}, {category}) — {ratio}× its usual level, {z} standard deviations above baseline.",
+  "scans.surge_help": "Compared with each service's own last 30 days. It means more machines than usual are probing that service now, not that anything has been breached.",
+  "scans.no_surge": "Nothing is being scanned noticeably more than its own baseline right now.",
+  "scans.trend": "Scanning over time",
+  "scans.days": "Days",
+  "scans.show": "Show",
+  "scans.axis": "Distinct scanning sources",
+  "scans.trend_help": "Distinct source IPs seen per day, summed over the ports tied to each category. A port maps to a category only loosely, so read the shape over time, not the absolute height.",
+  "scans.about": "What this is, and is not",
+  "scans.about_text": "- **Source**: the SANS Internet Storm Center (DShield), which aggregates many sensors' logs into daily totals per port. We never fetch or store an individual address.\\n- **Ports stand in for categories loosely.** Many services share a port and 443 carries almost everything, so this is scanning of services *associated with* a category, not a product and never a target.\\n- **It is an early signal, not proof.** A surge means attention; it precedes exploitation often enough to be worth watching, but not always, and quiet is not safety.\\n- **One network of sensors sees a slice of the Internet.** A change can be a change in the sensors as much as in the world."
 }

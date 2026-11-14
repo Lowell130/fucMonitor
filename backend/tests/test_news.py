@@ -170,7 +170,7 @@ def test_news_api(news):
         feeds = {f["id"]: f for f in api.get("/api/v1/news/feeds").json()["items"]}
         assert feeds["rss"]["last_status"] == "ok" and feeds["rss"]["total_items"] == 3
         names = [s["name"] for s in api.get("/api/v1/sources").json()["sources"]]
-        assert names == ["kev", "epss", "nvd", "exploits", "news"]
+        assert names == ["kev", "epss", "nvd", "exploits", "news", "scans"]
 
 
 def test_shipped_feeds_file_is_valid(settings):

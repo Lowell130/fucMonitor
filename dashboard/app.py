@@ -15,7 +15,7 @@ import streamlit as st
 from i18n import LANGUAGES, translate
 
 API_URL = os.environ.get("FUC_API_URL", "http://localhost:8000").rstrip("/")
-PAGES = ["overview", "forecast", "pipeline", "news", "vulns", "categories", "kev", "epss"]
+PAGES = ["overview", "forecast", "scans", "pipeline", "news", "vulns", "categories", "kev", "epss"]
 
 st.set_page_config(page_title="fucMonitor", page_icon="📈", layout="wide")
 
@@ -220,6 +220,52 @@ def page_forecast() -> None:
 
     with st.expander(t("forecast.limits")):
         st.markdown(t("forecast.limits_text"))
+
+
+def page_scans() -> None:
+    st.header(t("nav.scans"))
+    st.caption(t("scans.intro"))
+    names = labels("technology_categories")
+    surges = get_cached("/api/v1/scans/surges", baseline_days=30, min_z=2.0)
+    if not surges.get("all"):
+        st.info(t("scans.no_data"))
+        return
+
+    flagged = surges["surges"]
+    st.subheader(t("scans.surges"))
+    if flagged:
+        for row in flagged[:6]:
+            cat = names.get(row["category"], row["category"])
+            st.markdown(t("scans.surge_line", service=row["service"], port=row["port"],
+                          category=cat, ratio=f"{row['ratio']:.1f}", z=f"{row['z']:.1f}"))
+        st.caption(t("scans.surge_help"))
+    else:
+        st.success(t("scans.no_surge"))
+
+    st.subheader(t("scans.trend"))
+    a, b = st.columns([1, 3])
+    days = a.select_slider(t("scans.days"), [30, 90, 180, 365], value=90)
+    shown = b.multiselect(t("scans.show"), list(names), default=list(names),
+                          format_func=lambda k: names.get(k, k))
+    data = [r for r in get_cached("/api/v1/scans/trend", by="category", days=days)["items"]
+            if r["key"] in shown]
+    if data:
+        frame = pd.DataFrame(data)
+        frame["day"] = pd.to_datetime(frame["day"])
+        frame["label"] = frame["key"].map(lambda k: names.get(k, k))
+        st.altair_chart(
+            alt.Chart(frame).mark_line().encode(
+                x=alt.X("day:T", title=None),
+                y=alt.Y("value:Q", title=t("scans.axis")),
+                color=alt.Color("label:N", title=None, legend=alt.Legend(orient="bottom", columns=2, labelLimit=260)),
+                tooltip=[alt.Tooltip("day:T", format="%Y-%m-%d"), "label:N", "value:Q"],
+            ),
+            width="stretch",
+        )
+    st.caption(t("scans.trend_help"))
+
+    with st.expander(t("scans.about")):
+        st.markdown(t("scans.about_text"))
 
 
 def page_pipeline() -> None:
@@ -599,6 +645,6 @@ def page_epss() -> None:
             )
 
 
-{"overview": page_overview, "forecast": page_forecast, "pipeline": page_pipeline,
- "news": page_news, "vulns": page_vulns, "categories": page_categories,
- "kev": page_kev, "epss": page_epss}[page]()
+{"overview": page_overview, "forecast": page_forecast, "scans": page_scans,
+ "pipeline": page_pipeline, "news": page_news, "vulns": page_vulns,
+ "categories": page_categories, "kev": page_kev, "epss": page_epss}[page]()

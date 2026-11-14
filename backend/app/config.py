@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     # Optional replacement for backend/app/sources/feeds.json.
     news_feeds_file: Path | None = None
 
+    # --- scanning activity (SANS ISC / DShield) ------------------------------
+    # Aggregate daily totals per port. No individual address is ever fetched.
+    scans_url: str = "https://isc.sans.edu/api/porthistory/{port}/{start}/{end}?json"
+    scans_lookback_days: int = 10  # trailing window re-fetched each run, for late corrections
+    scans_ports_file: Path | None = None
+
     http_timeout: float = 180.0
     user_agent: str = "fucMonitor/0.1 (local research project)"
 

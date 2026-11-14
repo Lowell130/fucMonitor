@@ -70,7 +70,9 @@ Limiti noti delle notizie:
 
 Prossimi passi, in ordine:
 
-1. Notizie: raggruppamento multilingue e verifica a campione della qualità delle regole.
+1. Segnali anticipatori: scansioni aggregate da SANS ISC per porta e categoria, con rilevatore
+   di impennate; da collegare alle previsioni. Honeypot proprio o GreyNoise rimandati.
+2. Notizie: raggruppamento multilingue e verifica a campione della qualità delle regole.
 2. Revisione manuale della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
 3. Dataset a livello CVE con feature point-in-time e primo modello, da confrontare con questa base e con EPSS.
 4. Aggregazione per categoria e pagina Previsioni.

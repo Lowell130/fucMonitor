@@ -34,6 +34,9 @@ Local, zero-cost app that forecasts which technology categories will be exploite
 - `backend/app/analysis/exploitation.py`: historical exploitation rates per category and the
   baseline forecast. Every rate is censored by horizon: only CVEs old enough to have had H days
   are counted. Intervals are Wilson (shares) and Byar/Poisson (counts), no new dependency.
+- `backend/app/sources/scans.py` + `ports.json`: aggregate scan activity from SANS ISC/DShield,
+  one file per observed day, each with every watched port. Only aggregate per-port totals are
+  ever fetched; never an individual address. Port->category is loose by design.
 - `backend/app/enrich/news.py` + `rules.json`: derived news labels (event type, exploitation signal,
   claim status, sectors, stories). Raw items are never changed; `derived/` can be deleted and rebuilt.
   Bump `version` in `rules.json` on every rule change.

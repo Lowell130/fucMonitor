@@ -5,8 +5,9 @@ from .epss import EpssSource
 from .exploits import ExploitsSource
 from .kev import KevSource
 from .news import NewsSource
+from .scans import ScansSource
 from .nvd import NvdSource
 
-SOURCES: dict[str, Source] = {s.name: s for s in (KevSource(), EpssSource(), NvdSource(), ExploitsSource(), NewsSource())}
+SOURCES: dict[str, Source] = {s.name: s for s in (KevSource(), EpssSource(), NvdSource(), ExploitsSource(), NewsSource(), ScansSource())}
 
 __all__ = ["SOURCES", "Source", "IngestResult"]

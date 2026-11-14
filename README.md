@@ -105,6 +105,26 @@ quando — con una base di confronto deliberatamente semplice, non con un modell
 Lo sfruttamento è datato all'inserimento in CISA KEV: più tardi dell'inizio reale e parziale,
 quindi ogni numero è un minimo. La pagina lo dice, insieme agli altri limiti.
 
+## Allerta precoce (scansioni)
+
+Il SANS Internet Storm Center (DShield) aggrega i log di molti sensori in totali giornalieri
+per porta: quante macchine distinte scandagliano ogni servizio su Internet. Un'impennata di
+scansioni su un servizio precede spesso la conferma pubblica che una sua vulnerabilità viene
+sfruttata, quindi copre il buco fra «pubblicata» e «sfruttata» che le previsioni cercano.
+
+Nessun indirizzo singolo viene mai raccolto, archiviato o mostrato: solo numeri aggregati per
+porta. Ogni porta è legata in modo approssimativo a una categoria tecnologica
+(`backend/app/sources/ports.json`); molti servizi condividono una porta, quindi conta
+l'andamento nel tempo, non il valore assoluto. Lo storico è recuperabile, quindi una linea di
+base è disponibile da subito:
+
+```
+curl -X POST "http://localhost:8000/api/v1/sources/scans/backfill?years=2"
+```
+
+Il rilevatore di impennate confronta ogni servizio con i propri 30 giorni precedenti e segnala
+quelli ben sopra la propria media. È un segnale, non una prova.
+
 ## Notizie e avvisi
 
 Ogni ora il backend legge i feed RSS elencati in `backend/app/sources/feeds.json`: avvisi
