@@ -66,7 +66,7 @@ def collection_report(settings: Settings) -> dict:
             stale = last_finished is None or (now - last_finished) > timedelta(hours=_INTERVAL_STALE_HOURS)
         else:
             stale = latest is None or age_days > _DAILY_STALE_DAYS
-        failed = last_status not in (None, "success")
+        failed = last_status not in (None, "success", "running")  # 'running' is normal, in-progress
 
         entry = {
             "source": name, "cadence": cadence,
