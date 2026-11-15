@@ -29,6 +29,9 @@ def main(argv: list[str] | None = None) -> int:
     exp.add_argument("--json", action="store_true", help="Print the full result as JSON")
     exp.add_argument("--exploit-ablation", action="store_true",
                      help="Run the public-exploit ablation (EPSS+age vs EPSS+age+exploit) instead")
+    scan = sub.add_parser("scan-experiment", help="Does scanning help the category forecast?")
+    scan.add_argument("--horizon", type=int, default=90, help="Days ahead: 30, 90 or 365")
+    scan.add_argument("--json", action="store_true", help="Print the full result as JSON")
     args = parser.parse_args(argv)
 
     settings = get_settings()
@@ -60,6 +63,13 @@ def main(argv: list[str] | None = None) -> int:
             print(_json.dumps(out, indent=2))
         else:
             _print_experiment(out)
+    elif args.command == "scan-experiment":
+        import json as _json
+
+        from .analysis import scan_experiment
+
+        out = scan_experiment.run(settings, horizon=args.horizon)
+        print(_json.dumps(out, indent=2))
     return 1 if failed else 0
 
 

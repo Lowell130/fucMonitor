@@ -322,3 +322,10 @@ def test_exploit_ablation_point_in_time_and_structure(settings):
     con.close()
     assert before["x5"].sum() == 0            # exploit date 2024-06-01 is in the future here
     assert after["x5"].sum() > 0              # and in the past here
+
+
+def test_scan_experiment_handles_missing_data(settings):
+    """With no catalogue/scan history the scan experiment returns a note, not a crash."""
+    from app.analysis import scan_experiment
+    out = scan_experiment.run(settings, horizon=90)
+    assert out["methods"] == [] and "note" in out

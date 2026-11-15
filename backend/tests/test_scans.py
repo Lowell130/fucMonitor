@@ -156,6 +156,11 @@ def test_a_late_correction_rewrites_only_that_day(isc):
     run = runner.run_source(settings, "scans",
                             client=httpx.Client(transport=httpx.MockTransport(revised)))
     assert run["message"].startswith("1 days written")  # only today changed
-    value = queries._rows("SELECT sources FROM read_parquet(?) WHERE port = 445",
-                          [stored.as_posix()])[0]["sources"]
-    assert value == 99999
+    row = queries._rows(
+        "SELECT sources, first_sources, (first_seen_at <= retrieved_at) AS first_is_earlier "
+        "FROM read_parquet(?) WHERE port = 445",
+        [stored.as_posix()])[0]
+    assert row["sources"] == 99999                       # current value is the revision
+    # the first-seen value is preserved, not overwritten by the revision
+    assert row["first_sources"] is not None and row["first_sources"] != 99999
+    assert row["first_is_earlier"] is True

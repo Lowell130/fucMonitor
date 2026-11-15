@@ -161,9 +161,10 @@ exploit↔CVE fosse disponibile allora: il catalogo è stato raccolto ora (`firs
 abbiamo solo la mappatura **corrente**, senza snapshot storici del legame. Un riferimento CVE può
 essere stato aggiunto a una voce Exploit-DB molto dopo la pubblicazione, quindi «ha un exploit
 entro D» può essere **ottimista**. Non è quindi un fatto point-in-time come EPSS-alla-data o
-l'ingresso in KEV, ma una ricostruzione approssimata. Poiché anche così non aggiunge nulla, il
-risultato negativo vale *a maggior ragione*. Nuclei è escluso perché privo di data (copertura
-parziale).
+l'ingresso in KEV, ma una ricostruzione approssimata. Il risultato va quindi letto come
+**nessun beneficio dimostrato nell'esperimento attuale** (la feature non aggiunge nulla qui), non
+come prova che un collegamento exploit corretto point-in-time non possa aiutare. Nuclei è escluso
+perché privo di data (copertura parziale).
 
 | Modello | ROC-AUC entro-data | ROC-AUC pooled |
 | --- | --- | --- |

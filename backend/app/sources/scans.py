@@ -46,6 +46,11 @@ SCHEMA = pa.schema(
         ("tcp_pct", pa.int32()),
         ("udp_pct", pa.int32()),
         ("retrieved_at", pa.timestamp("us", tz="UTC")),
+        # First value we ever stored for this observed day/port, and when. DShield revises recent
+        # days, and we otherwise keep only the latest, so these preserve what was available at the
+        # time: needed to tell a point-in-time scan feature from a retrospectively-corrected one.
+        ("first_sources", pa.int32()),
+        ("first_seen_at", pa.timestamp("us", tz="UTC")),
     ]
 )
 
@@ -143,9 +148,16 @@ class ScansSource(Source):
         for observed, rows in sorted(by_day.items()):
             target = self.curated_path(settings, observed)
             existing = self._existing(target)
+            firsts = self._existing_firsts(target)
             fresh = {r["port"]: r for r in rows}
             if existing == {p: _comparable(r) for p, r in fresh.items()}:
-                continue  # the stored day already matches; leave it
+                continue  # the stored day already matches; leave it (keeps first_* untouched)
+            for port, r in fresh.items():
+                prior = firsts.get(port)
+                if prior and prior[0] is not None:
+                    r["first_sources"], r["first_seen_at"] = prior  # preserve the original value
+                else:
+                    r["first_sources"], r["first_seen_at"] = r["sources"], r["retrieved_at"]
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_name("data.parquet.tmp")
             pq.write_table(pa.Table.from_pylist(list(fresh.values()), schema=SCHEMA), tmp, compression="zstd")
@@ -164,6 +176,14 @@ class ScansSource(Source):
         table = pq.read_table(target)
         rows = table.to_pylist()
         return {r["port"]: _comparable(r) for r in rows}
+
+    def _existing_firsts(self, target: Path) -> dict[int, tuple]:
+        """The first-seen value already stored per port, so a rewrite can preserve it. Older files
+        predate these columns, so missing values come back as None and are treated as absent."""
+        if not target.exists():
+            return {}
+        rows = pq.read_table(target).to_pylist()
+        return {r["port"]: (r.get("first_sources"), r.get("first_seen_at")) for r in rows}
 
 
 def _comparable(row: dict) -> tuple:

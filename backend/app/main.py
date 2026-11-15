@@ -544,6 +544,25 @@ def epss_experiment_exploit_ablation(
         raise HTTPException(422, str(exc)) from exc
 
 
+@app.get("/api/v1/analysis/scan-forecast-experiment", tags=["analysis"])
+def scan_forecast_experiment(
+    horizon: int = Query(90, description="Days ahead: 30, 90 or 365"),
+    lookback: int = Query(180, ge=30, le=730),
+) -> dict:
+    """Dedicated check: does adding the scanning signal to the category forecast lower the count
+    error, keep interval coverage and catch more at equal budget, on a held-out tail? Scanning is
+    integrated only if it helps on all three; otherwise it stays a flag. Retrospective and
+    approximate on the scanning side (see the result's limits)."""
+    try:
+        from .analysis import scan_experiment  # local import: numpy only needed here
+    except ImportError as exc:
+        raise HTTPException(503, f"experiment needs numpy; rebuild the image: {exc}") from exc
+    try:
+        return scan_experiment.run(get_settings(), horizon=horizon, lookback=lookback)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.get("/api/v1/analysis/epss-experiment/news-readiness", tags=["analysis"])
 def epss_experiment_news_readiness(horizon: int = Query(30)) -> dict:
     """Whether enough news history has accumulated to test 'CVE cited in news by D' against

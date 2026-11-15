@@ -734,9 +734,9 @@ def _verdict_exploit(models: dict, by_year: dict) -> str:
                 "exploit availability stays distinct from scanning and from KEV. EPSS remains the "
                 "reference and the category forecast is untouched.")
     if abs(gain) < 0.01:
-        return (head + f"Added to EPSS+age it does not change ranking ({age_w:.2f} -> {both_w:.2f}), "
-                "so a public exploit adds no information beyond EPSS and age for this target. Keep "
-                "EPSS+age; do not add the exploit feature.")
+        return (head + f"Added to EPSS+age it does not change ranking ({age_w:.2f} -> {both_w:.2f}): "
+                "no benefit demonstrated in this experiment, with an approximate (possibly "
+                "optimistic) exploit-link reconstruction. Keep EPSS+age; do not add the feature.")
     return (head + f"Added to EPSS+age the effect is small or unstable ({age_w:.2f} -> {both_w:.2f}), "
             "not a credible improvement. Keep EPSS+age pending more positives.")
 
@@ -765,7 +765,9 @@ def run_exploit_ablation(settings: Settings, horizon: int = 30, neg_ratio: int =
         "mapping, so we cannot verify that the exploit was already linked to this CVE at date D. A "
         "CVE reference can be added to an exploit entry long after publication, so 'has_exploit by "
         "D' may be optimistic. This is a retrospective reconstruction, not a point-in-time fact; "
-        "since even so it adds nothing over EPSS+age, the negative result holds a fortiori.",
+        "so the result is: no benefit demonstrated in this experiment (the feature adds nothing "
+        "over EPSS+age here), rather than a proof that a correct point-in-time exploit link could "
+        "not help.",
         "Nuclei carries no date and is excluded, so exploit coverage is partial.",
         "A public exploit existing is not confirmed exploitation and not a KEV listing; this only "
         "tests its value as a feature for anticipating the KEV listing.",
@@ -871,24 +873,30 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
     }
 
 
-# Minimum history (days) before a news feature can be tested walk-forward against EPSS+age.
-# A credible run needs training plus several disjoint horizon windows with KEV positives.
+# Readiness thresholds for testing a news feature walk-forward against EPSS+age. Readiness is not
+# just elapsed time: it also needs enough CVE coverage and enough OBSERVED KEV events that the
+# news actually anticipated, or there is nothing with signal to learn from or measure.
 _NEWS_MIN_SPAN_DAYS = 365
+_NEWS_MIN_OBSERVED_DAYS = 300
+_NEWS_MIN_CVES_CITED = 500        # distinct CVEs mentioned in collected news
+_NEWS_MIN_KEV_WITH_NEWS = 50      # KEV entries, in the covered span, whose CVE was in news by entry
 
 
 def news_history_readiness(settings: Settings, horizon: int = 30) -> dict:
-    """Is the news history long enough to test 'CVE cited in news by D' against EPSS+age yet?
+    """Is the news history enough to test 'CVE cited in news by D' against EPSS+age yet?
 
     News is modelled by `first_seen_at` (when we first observed an item) and cannot be
     back-filled: RSS feeds only return a recent window, so the usable history grows forward from
-    the day collection started. This reports how much exists and whether it is enough — a probe to
-    run over time, not an experiment. The protocol for when it is ready is documented in the
-    'note', including a final hold-out period kept out of any news-feature selection.
+    the day collection started. Readiness depends on three things, not just elapsed days: a long
+    enough span, enough CVE coverage, and enough OBSERVED KEV entries that the news actually
+    preceded (the events with signal). This is a probe to watch over time, not an experiment.
     """
     files = SOURCES["news"].curated_files(settings)
     if not files:
-        return {"ready": False, "observed_days": 0, "span_days": 0,
+        return {"ready": False, "observed_days": 0, "span_days": 0, "cves_cited": 0,
+                "kev_entries_with_prior_news": 0,
                 "note": "no news collected yet; the harness accumulates it going forward."}
+    kev_files = SOURCES["kev"].curated_files(settings)
     con = duckdb.connect()
     try:
         row = _fetch(con, f"""
@@ -899,28 +907,46 @@ def news_history_readiness(settings: Settings, horizon: int = 30) -> dict:
                    count(*) FILTER (WHERE len(cve_ids) > 0) AS items_with_cve
             FROM read_parquet({files!r})
         """)
+        cves_cited = con.execute(
+            f"SELECT count(DISTINCT u) FROM (SELECT unnest(cve_ids) AS u FROM read_parquet({files!r}))"
+        ).fetchone()[0]
+        # KEV entries whose CVE appeared in news on or before the KEV entry date (observed signal)
+        kev_with_news = 0
+        if kev_files:
+            kev_with_news = con.execute(f"""
+                WITH news_first AS (
+                    SELECT u AS cve_id, min(CAST(first_seen_at AS DATE)) AS news_day
+                    FROM read_parquet({files!r}), unnest(cve_ids) AS t(u) GROUP BY 1),
+                kev AS (SELECT cve_id, min(date_added) AS kev_date FROM read_parquet({kev_files!r}) GROUP BY 1)
+                SELECT count(*) FROM kev k JOIN news_first n USING (cve_id)
+                WHERE n.news_day <= k.kev_date
+            """).fetchone()[0]
     finally:
         con.close()
     first_day = row["first_day"][0]
     last_day = row["last_day"][0]
     span = int((last_day - first_day).astype("timedelta64[D]").astype(int)) if row["items"][0] else 0
-    ready = span >= _NEWS_MIN_SPAN_DAYS and int(row["observed_days"][0]) >= 300
+    ready = (span >= _NEWS_MIN_SPAN_DAYS and int(row["observed_days"][0]) >= _NEWS_MIN_OBSERVED_DAYS
+             and int(cves_cited) >= _NEWS_MIN_CVES_CITED and int(kev_with_news) >= _NEWS_MIN_KEV_WITH_NEWS)
     return {
         "ready": bool(ready),
         "items": int(row["items"][0]),
         "items_with_cve": int(row["items_with_cve"][0]),
         "observed_days": int(row["observed_days"][0]),
         "span_days": span,
+        "cves_cited": int(cves_cited),
+        "kev_entries_with_prior_news": int(kev_with_news),
         "first_day": str(first_day),
         "last_day": str(last_day),
-        "needed_span_days": _NEWS_MIN_SPAN_DAYS,
+        "thresholds": {"span_days": _NEWS_MIN_SPAN_DAYS, "observed_days": _NEWS_MIN_OBSERVED_DAYS,
+                       "cves_cited": _NEWS_MIN_CVES_CITED, "kev_entries_with_prior_news": _NEWS_MIN_KEV_WITH_NEWS},
         "note": (
-            "News modelled by first observation (first_seen_at); it is NOT back-fillable, so the "
-            f"usable history only grows forward. Needs about {_NEWS_MIN_SPAN_DAYS} days of "
-            "collection before a credible walk-forward against EPSS+age is possible. Planned "
-            "protocol when ready: feature = 'the CVE was cited in collected news by date D' "
-            "(first_seen_at <= D), same disjoint-window walk-forward and metrics as the exploit "
-            "ablation, exploit/scan/news kept distinct, and a final hold-out period (the most "
-            "recent months) reserved out of any news-feature or threshold selection and used only "
-            "for the final comparison. Until ready, keep EPSS+age unchanged."),
+            "News modelled by first observation (first_seen_at); NOT back-fillable, so the usable "
+            "history only grows forward. Readiness needs all of: a span, CVE coverage, and enough "
+            "KEV entries the news actually preceded (not just elapsed days). Planned protocol when "
+            "ready: feature = 'the CVE was cited in collected news by date D' (first_seen_at <= D), "
+            "same disjoint-window walk-forward and metrics as the exploit ablation, exploit/scan/"
+            "news kept distinct, and a final hold-out period (the most recent months) reserved out "
+            "of any news-feature or threshold selection, used only for the final comparison. Until "
+            "ready, keep EPSS+age unchanged."),
     }
