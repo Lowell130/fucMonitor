@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
 
         from .analysis import epss_experiment
 
-        out = epss_experiment.run(settings, horizon=args.horizon)
+        out = epss_experiment.run_cached(settings, horizon=args.horizon)
         if args.json:
             print(_json.dumps(out, indent=2))
         else:

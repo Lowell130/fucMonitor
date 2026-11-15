@@ -105,6 +105,25 @@ quando — con una base di confronto deliberatamente semplice, non con un modell
 Lo sfruttamento è datato all'inserimento in CISA KEV: più tardi dell'inizio reale e parziale,
 quindi ogni numero è un minimo. La pagina lo dice, insieme agli altri limiti.
 
+## Esperimento: singola CVE vs EPSS
+
+Un primo modello a livello di singola CVE, tenuto **separato** dalla previsione per categoria e
+mai fuso con essa. Domanda: si può prevedere meglio di EPSS quali CVE entreranno nel catalogo
+CISA KEV entro 30 giorni? Valutazione walk-forward senza informazioni dal futuro, con test
+anti-contaminazione. Dettagli e numeri in `docs/EXPERIMENT_EPSS_CVE.md`.
+
+In breve: EPSS + età della CVE ordina gli ingressi imminenti in KEV meglio di EPSS da solo
+(ROC-AUC entro-data 0,62 → 0,85, stabile 2023–2026); il guadagno viene **tutto dall'età**, non
+dal trend EPSS. La ricalibrazione non cambia l'ordine e sul Brier eguaglia solo la frequenza
+base. La performance assoluta resta bassa e il bersaglio è l'ingresso nel **catalogo**, non la
+data reale di sfruttamento. EPSS resta il riferimento.
+
+```
+docker compose exec backend python -m app.cli epss-experiment --horizon 30
+curl "http://localhost:8000/api/v1/analysis/epss-experiment"          # report (in cache)
+curl "http://localhost:8000/api/v1/analysis/epss-experiment/scores"   # ordinamento sperimentale
+```
+
 ## Allerta precoce (scansioni)
 
 Il SANS Internet Storm Center (DShield) aggrega i log di molti sensori in totali giornalieri

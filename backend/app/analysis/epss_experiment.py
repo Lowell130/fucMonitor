@@ -320,6 +320,43 @@ def run(settings: Settings, horizon: int = 30, neg_ratio: int = 40, min_train_po
     return evaluate(evals, data, horizon, neg_ratio, min_train_pos, budgets, seed)
 
 
+def _cache_path(settings: Settings, horizon: int) -> "Path":
+    from pathlib import Path
+
+    return Path(settings.data_dir) / "derived" / f"epss_experiment_h{horizon}.json"
+
+
+def run_cached(settings: Settings, horizon: int = 30) -> dict:
+    """Run `run`, but serve a cached result while the latest EPSS snapshot has not changed.
+
+    The walk-forward run is heavy (minutes), and its result only moves when new data lands, so
+    the API reads a cached JSON tagged with the latest snapshot date and recomputes only when
+    that date advances. The cache lives under data/derived, which is recalculable and gitignored.
+    """
+    import json
+
+    dates = _epss_dates(settings)
+    latest = str(dates[-1]) if dates else None
+    path = _cache_path(settings, horizon)
+    if path.exists():
+        try:
+            cached = json.loads(path.read_text(encoding="utf-8"))
+            if cached.get("data_as_of") == latest:
+                cached["served_from_cache"] = True
+                return cached
+        except (ValueError, OSError):
+            pass
+    out = run(settings, horizon=horizon)
+    out["data_as_of"] = latest
+    out["served_from_cache"] = False
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+    return out
+
+
 def evaluate(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 40,
              min_train_pos: int = 30, budgets=(5, 10, 20, 50, 100), seed: int = 42) -> dict:
     """Walk-forward training, scoring and metrics over pre-assembled feature arrays."""

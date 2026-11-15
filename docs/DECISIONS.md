@@ -68,13 +68,28 @@ Limiti noti delle notizie:
 - La stessa notizia in italiano e in inglese non viene ancora raggruppata: serve un modello multilingue.
 - Il feed Microsoft pubblica una voce per ogni CVE, quindi pesa molto sui conteggi degli avvisi.
 
+Modello a livello CVE vs EPSS (fatto, vedi `docs/EXPERIMENT_EPSS_CVE.md`):
+
+- Bersaglio: ingresso nel catalogo KEV entro 30 giorni (non la data reale di sfruttamento).
+- Valutazione walk-forward, 56 date mensili 2022-03→2026-10, 881 positivi, senza contaminazioni
+  temporali (9 test anti-leakage). Metriche: ROC-AUC entro-data e pooled, PR-AUC, Brier con BSS
+  rispetto alla frequenza base, precisione/richiamo a parità di allerte, anticipo, stabilità.
+- Risultato: EPSS+età ordina gli ingressi imminenti in KEV meglio di EPSS da solo (ROC-AUC
+  entro-data 0,62 → 0,85, stabile 2023–2026). **Tutto il guadagno viene dall'età della CVE; il
+  trend EPSS non aggiunge nulla.** La ricalibrazione non cambia l'ordine (monotòna) e sul Brier
+  eguaglia soltanto la frequenza base. Performance assoluta bassa; bersaglio = catalogo, non
+  sfruttamento reale. EPSS resta il riferimento; la previsione aggregata non è toccata.
+- Integrato come esperimento separato: endpoint `epss-experiment` e scorer sperimentale EPSS+età,
+  mai fusi nella previsione per categoria.
+
 Prossimi passi, in ordine:
 
 1. Segnali anticipatori: scansioni aggregate da SANS ISC per porta e categoria, con rilevatore
    di impennate, affiancate alla previsione (mai fuse) e con un controllo storico — fatto — che
    misura se le impennate anticipano lo sfruttamento. Honeypot proprio o GreyNoise rimandati.
-2. Notizie: raggruppamento multilingue e verifica a campione della qualità delle regole.
-2. Revisione manuale della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
-3. Dataset a livello CVE con feature point-in-time e primo modello, da confrontare con questa base e con EPSS.
-4. Aggregazione per categoria e pagina Previsioni.
-5. Segnali live, poi frontend React.
+2. Esperimenti separati: misurare se exploit pubblici, notizie o scansioni aggiungono capacità
+   predittiva oltre EPSS+età, tenendo distinti disponibilità di exploit, scansione e sfruttamento.
+3. Notizie: raggruppamento multilingue e verifica a campione della qualità delle regole.
+4. Revisione manuale della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
+5. Aggregazione per categoria e pagina Previsioni.
+6. Segnali live, poi frontend React.

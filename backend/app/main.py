@@ -497,9 +497,10 @@ def epss_experiment_report(
 ) -> dict:
     """Walk-forward CVE-level comparison against EPSS for the KEV-entry target: raw EPSS, a
     constant base-rate, recalibrated EPSS, EPSS+age, EPSS+trend and the full feature model.
-    Experimental and separate: it never feeds the category forecast."""
+    Experimental and separate: it never feeds the category forecast. The run is heavy, so the
+    result is cached until the latest EPSS snapshot advances (first call can take minutes)."""
     try:
-        return epss_experiment.run(get_settings(), horizon=horizon)
+        return epss_experiment.run_cached(get_settings(), horizon=horizon)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 
