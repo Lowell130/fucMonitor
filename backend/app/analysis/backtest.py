@@ -1,10 +1,17 @@
 """Measures the forecast against what actually happened, month by month.
 
 A forecast nobody has scored is a decoration. This walks a date through the past, asks
-each method to predict the next H days using only what was known on that date, and compares
-the answer with what the catalogue later recorded. No model trains here and nothing is
-fitted: that is the point, because a baseline has to be beaten by something, and first it
-has to be measured.
+each method to predict the next H days, and compares the answer with what the catalogue later
+recorded. No model trains here and nothing is fitted: that is the point, because a baseline has
+to be beaten by something, and first it has to be measured.
+
+Point-in-time, with one honest exception. Publication and exploitation (KEV entry) dates are
+used as they were recorded, so the counts at each past date use only events that had happened by
+then. But each CVE's technology *category* comes from today's NVD products and today's mapping,
+not from what was known that day: NVD fills in affected products weeks after publication and the
+mapping is built now. So the category dimension is a retrospective reconstruction, not an as-of
+fact. This can shift a CVE between categories relative to the past; it does not let future events
+leak into a past date's counts.
 
 Two methods are scored against each other:
 
@@ -97,7 +104,8 @@ def run(settings: Settings, horizon: int = 90, step_days: int = 30, points: int 
             f"""
             WITH pairs AS (SELECT d.as_of, f.* FROM evaluation_dates d, facts f)
             SELECT as_of, category,
-                   -- what was known on the day, and nothing more
+                   -- counts by publication/exploitation date up to the day; the category label
+                   -- itself is the current one, not reconstructed as of the day
                    {recent_counts},
                    count(DISTINCT CASE
                        WHEN published_date >= as_of - INTERVAL 365 DAY AND published_date < as_of

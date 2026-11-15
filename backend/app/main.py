@@ -430,8 +430,9 @@ def exploitation_backtest(
     step_days: int = Query(30, ge=7, le=180),
     points: int = Query(24, ge=3, le=120),
 ) -> dict:
-    """Score the forecast methods against what actually happened, using only what was
-    known at each past date. A forecast nobody has scored is a decoration."""
+    """Score the forecast methods against what actually happened. Publication and exploitation
+    dates are point-in-time at each past date; each CVE's category, though, comes from today's
+    catalogue and mapping, not as-of that day. A forecast nobody has scored is a decoration."""
     try:
         return backtest.run(get_settings(), horizon, step_days, points)
     except ValueError as exc:

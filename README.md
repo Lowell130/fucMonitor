@@ -98,9 +98,12 @@ quando — con una base di confronto deliberatamente semplice, non con un modell
 - **Attese nei prossimi N giorni**: quante vulnerabilità della categoria sono risultate sfruttate
   nell'ultimo anno, riportate all'orizzonte, con un intervallo che mostra quanto poco dica un
   numero piccolo di casi.
-- **Quanto ha funzionato finora**: la previsione viene valutata mese per mese sul passato, ogni
-  volta usando solo ciò che si sapeva quel giorno. Il metodo in uso è stato scelto così, non a
-  intuito: quello iniziale (volume di pubblicazioni per quota storica) sbagliava di più.
+- **Quanto ha funzionato finora**: la previsione viene valutata mese per mese sul passato. I
+  conteggi a ogni data usano le date di pubblicazione e di sfruttamento così come registrate
+  (point-in-time); la **categoria** di ogni CVE, però, viene dal catalogo e dalla mappatura di
+  oggi, non da ciò che si sapeva quel giorno (NVD completa i prodotti settimane dopo). Il metodo
+  in uso è stato scelto così, non a intuito: quello iniziale (volume di pubblicazioni per quota
+  storica) sbagliava di più.
 
 Lo sfruttamento è datato all'inserimento in CISA KEV: più tardi dell'inizio reale e parziale,
 quindi ogni numero è un minimo. La pagina lo dice, insieme agli altri limiti.
