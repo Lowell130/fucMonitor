@@ -75,14 +75,25 @@ def _epss_file(settings: Settings, day: date) -> str:
     return SOURCES["epss"].curated_path(settings, day).as_posix()
 
 
-def _monthly_eval_dates(dates: list[date], horizon: int, start: date, today: date) -> list[date]:
-    """One snapshot per calendar month whose whole H-day window has elapsed."""
-    by_month: dict[tuple[int, int], date] = {}
+def _eval_dates(dates: list[date], horizon: int, start: date, today: date) -> list[date]:
+    """Test dates spaced at least `horizon` days apart, each with a fully elapsed H-day window.
+
+    Spacing >= horizon makes the outcome windows (D, D+H] disjoint: consecutive dates satisfy
+    D_next >= D + H, so window i ends (D+H) exactly where window i+1 starts (D_next) or earlier.
+    A KEV entry therefore falls in at most one window and is never counted twice, and a CVE that
+    enters KEV in a window is already listed (and so excluded) by the next test date. Picking
+    greedily can leave a few-day gap between a window's end and the next snapshot; entries in
+    such a gap are simply not counted anywhere (conservative), never double-counted.
+    """
+    picked: list[date] = []
+    last: date | None = None
     for d in dates:
         if d < start or d + timedelta(days=horizon) > today:
             continue
-        by_month.setdefault((d.year, d.month), d)
-    return sorted(by_month.values())
+        if last is None or (d - last).days >= horizon:
+            picked.append(d)
+            last = d
+    return picked
 
 
 def _prior_snapshot(dates: list[date], D: date, target: int = 28, lo: int = 14, hi: int = 45) -> date | None:
@@ -243,13 +254,24 @@ def _roc_auc(score: np.ndarray, y: np.ndarray) -> float:
 
 
 def _ap(score: np.ndarray, y: np.ndarray) -> float:
-    order = np.argsort(-score)
+    """Average precision, tie-safe: operating points are defined only at the boundaries between
+    groups of equal score, so tied examples are never split by their arbitrary input order."""
+    order = np.argsort(-score, kind="mergesort")
+    s = score[order]
     ys = y[order]
+    P = ys.sum()
+    if P == 0:
+        return 0.0
     tp = np.cumsum(ys)
     fp = np.cumsum(1 - ys)
-    prec = tp / (tp + fp)
-    rec = tp / max(1, ys.sum())
-    return float(np.sum((rec - np.concatenate([[0], rec[:-1]])) * prec))
+    boundary = np.ones(len(s), dtype=bool)
+    boundary[:-1] = s[:-1] != s[1:]           # last index of each equal-score group
+    tp_b = tp[boundary]
+    fp_b = fp[boundary]
+    recall = tp_b / P
+    precision = tp_b / np.maximum(tp_b + fp_b, 1)
+    rprev = np.concatenate([[0.0], recall[:-1]])
+    return float(np.sum((recall - rprev) * precision))
 
 
 def _brier(p: np.ndarray, y: np.ndarray) -> float:
@@ -269,35 +291,67 @@ def _ece(p: np.ndarray, y: np.ndarray, bins: int = 10) -> float:
 
 
 def _budget(score, y, d2k, groups, fixed=None):
-    tp = fp = fn = 0
+    """Precision/recall when, at each test date, the top-`b` scored CVEs are alerted.
+
+    Tie-safe: EPSS has large groups of identical scores, so the budget boundary often lands
+    inside a tie group where the choice of which tied CVEs to alert is arbitrary. Rather than let
+    input order decide, count the *expected* number of true positives in the straddled group
+    (its positives times the fraction of it that fits in the budget). true-positive counts are
+    therefore fractional. Lead time is taken only over positives whose whole tie group fits, where
+    selection is unambiguous.
+    """
+    tp = fp = fn = 0.0
     leads = []
     for ids in groups:
         sc = score[ids]
         yy = y[ids]
-        npos = int(yy.sum())
-        b = npos if fixed is None else fixed
+        P = int(yy.sum())
+        b = P if fixed is None else fixed
         if b <= 0:
-            fn += npos
+            fn += P
             continue
-        top = ids[np.argsort(-sc)[:b]]
-        hit = int(y[top].sum())
-        tp += hit
-        fp += int((1 - y[top]).sum())
-        fn += npos - hit
-        for j in top:
-            if y[j] == 1 and d2k[j] >= 0:
-                leads.append(int(d2k[j]))
+        order = np.argsort(-sc, kind="mergesort")
+        sc_s = sc[order]
+        ids_s = ids[order]
+        yy_s = yy[order]
+        n = len(sc_s)
+        taken = 0
+        sel_tp = 0.0
+        i = 0
+        while i < n and taken < b:
+            j = i
+            while j + 1 < n and sc_s[j + 1] == sc_s[i]:
+                j += 1
+            gsize = j - i + 1
+            gpos = int(yy_s[i:j + 1].sum())
+            slots = b - taken
+            if gsize <= slots:                 # whole group fits: deterministic selection
+                sel_tp += gpos
+                for k in range(i, j + 1):
+                    if yy_s[k] == 1 and d2k[ids_s[k]] >= 0:
+                        leads.append(int(d2k[ids_s[k]]))
+                taken += gsize
+            else:                              # group straddles the budget: expected positives
+                sel_tp += gpos * slots / gsize
+                taken = b
+            i = j + 1
+        selected = min(b, n)
+        tp += sel_tp
+        fp += selected - sel_tp
+        fn += P - sel_tp
     la = np.array(leads)
     return {
-        "tp": tp, "fp": fp,
-        "precision": round(tp / max(1, tp + fp), 4),
-        "recall": round(tp / max(1, tp + fn), 4),
+        "tp_expected": round(tp, 1), "fp_expected": round(fp, 1),
+        "precision": round(tp / max(1e-9, tp + fp), 4),
+        "recall": round(tp / max(1e-9, tp + fn), 4),
         "lead_median": float(np.median(la)) if len(la) else None,
         "lead_mean": round(float(la.mean()), 1) if len(la) else None,
     }
 
 
 # --- public entry points -----------------------------------------------------
+# Bumped whenever the experiment logic changes, so a cached result is not reused across versions.
+_EXPERIMENT_VERSION = "3"
 # Ranking models (produce a per-CVE score). base_rate is a non-ranking reference for Brier.
 RANKERS = ("raw_epss", "epss_platt", "epss_age", "epss_trend", "feat_model")
 MODELS = ("base_rate",) + RANKERS
@@ -317,7 +371,7 @@ def assemble_all(settings: Settings, horizon: int = 30, start: date | None = Non
         con.execute("PRAGMA threads=4")
         _lookup_tables(con, settings)
         all_dates = _epss_dates(settings)
-        evals = _monthly_eval_dates(all_dates, horizon, start, today)
+        evals = _eval_dates(all_dates, horizon, start, today)
         if len(evals) < 6:
             raise ValueError("not enough EPSS history for a walk-forward run")
         data = {D: _assemble(con, settings, D, _epss_file(settings, p) if (p := _prior_snapshot(all_dates, D)) else None, horizon)
@@ -345,28 +399,43 @@ def _cache_path(settings: Settings, horizon: int) -> "Path":
     return Path(settings.data_dir) / "derived" / f"epss_experiment_h{horizon}.json"
 
 
-def run_cached(settings: Settings, horizon: int = 30) -> dict:
-    """Run `run`, but serve a cached result while the latest EPSS snapshot has not changed.
+def _inputs_signature(settings: Settings, horizon: int) -> str:
+    """A tag that changes whenever anything the result depends on changes: the experiment code
+    (`_EXPERIMENT_VERSION`), the horizon, and the newest EPSS, KEV and NVD snapshots. Keying the
+    cache on this, not on the EPSS date alone, stops it serving a result that newer KEV entries,
+    a newer NVD catalogue or a code change have made stale."""
+    def last(source: str) -> str:
+        ds = SOURCES[source].snapshot_dates(settings)
+        return str(ds[-1]) if ds else "none"
+    return (f"v{_EXPERIMENT_VERSION}|h{horizon}|epss={last('epss')}|"
+            f"kev={last('kev')}|nvd={last('nvd')}")
 
-    The walk-forward run is heavy (minutes), and its result only moves when new data lands, so
-    the API reads a cached JSON tagged with the latest snapshot date and recomputes only when
-    that date advances. The cache lives under data/derived, which is recalculable and gitignored.
+
+def run_cached(settings: Settings, horizon: int = 30) -> dict:
+    """Run `run`, but serve a cached result while its inputs have not changed.
+
+    The walk-forward run is heavy (minutes). The cached JSON carries an `inputs_signature`
+    (code version + horizon + latest EPSS/KEV/NVD snapshots); the cache is reused only when that
+    signature still matches, so a new KEV entry, a refreshed NVD catalogue or a code change all
+    force a recompute. The cache lives under data/derived, which is recalculable and gitignored.
     """
     import json
 
+    sig = _inputs_signature(settings, horizon)
     dates = _epss_dates(settings)
     latest = str(dates[-1]) if dates else None
     path = _cache_path(settings, horizon)
     if path.exists():
         try:
             cached = json.loads(path.read_text(encoding="utf-8"))
-            if cached.get("data_as_of") == latest:
+            if cached.get("inputs_signature") == sig:
                 cached["served_from_cache"] = True
                 return cached
         except (ValueError, OSError):
             pass
     out = run(settings, horizon=horizon)
     out["data_as_of"] = latest
+    out["inputs_signature"] = sig
     out["served_from_cache"] = False
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -469,12 +538,15 @@ def evaluate(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 
                          "prevalence": round(float(y.mean()), 8),
                          "eval_gap_days": {"min": min(eval_gaps), "median": int(np.median(eval_gaps)),
                                            "max": max(eval_gaps)} if eval_gaps else None},
+        "windows_disjoint": bool(not eval_gaps or min(eval_gaps) >= horizon),
         "repeated_cves_and_overlap": (
-            f"Monthly test dates are {min(eval_gaps) if eval_gaps else horizon}-{max(eval_gaps) if eval_gaps else horizon} days "
-            f"apart vs a {horizon}-day window, so a CVE's successive outcome windows barely overlap. "
-            "A CVE recurs as a (CVE, date) example across months while it stays un-listed; each is a "
-            "distinct prediction opportunity. A positive (first KEV entry) can occur at only one date, "
-            "because a CVE is dropped from the population once listed, so positives never double-count."),
+            f"Test dates are {min(eval_gaps) if eval_gaps else horizon}-{max(eval_gaps) if eval_gaps else horizon} days "
+            f"apart, each at least the {horizon}-day window, so the outcome windows (D, D+{horizon}] are "
+            "disjoint: a future KEV entry falls in at most one window and is never counted twice. A CVE "
+            "recurs as a (CVE, date) example across dates only while it stays un-listed, and once it enters "
+            "KEV it is excluded from every later date's population; so a positive (first KEV entry) is "
+            "counted at exactly one date. An entry landing in the few-day gap between a window's end and "
+            "the next snapshot is not counted anywhere (conservative), never double-counted."),
         "features_used": ["logit(EPSS as of D)", "EPSS ~28-day trend", "log1p(CVE age in days)", "is_new"],
         "features_excluded": ["CVSS", "CWE", "affected products/category (NVD is stored as current "
                               "state only; their value at a past date is not reconstructible without leakage)"],
@@ -487,10 +559,16 @@ def evaluate(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 
                 "because recalibration uses different coefficients per date, changing cross-date "
                 "comparability, not discrimination.",
             "brier_skill_vs_base_rate": "1 - Brier/Brier(constant training prevalence); >0 beats a "
-                "constant base-rate forecast, <0 is worse than it.",
-            "pr_auc": "near-zero and tie-dominated at this prevalence; not the headline metric.",
+                "constant base-rate forecast, <0 is worse. Every probability model here sits at or "
+                "slightly below 0, so none adds probabilistic skill over predicting the base rate; "
+                "the value is in ranking (ROC-AUC), not in the probability values.",
+            "pr_auc": "tie-safe (operating points at equal-score boundaries), but near-zero at this "
+                "prevalence; not the headline metric.",
+            "budget_metrics": "alerts are chosen at each sampled test date, NOT every calendar day; "
+                "'per_eval_date' means per sampled snapshot. Tie-safe: fractional expected true "
+                "positives when the budget lands inside a group of equal scores.",
         },
-        "precision_recall_by_budget_per_day": by_budget,
+        "precision_recall_by_budget_per_eval_date": by_budget,
         "precision_recall_equal_budget": equal_budget,
         "roc_auc_by_year": by_year,
         "feat_vs_raw_roc_gain_pooled": round(feat_pool - raw_pool, 4),
@@ -522,10 +600,13 @@ def _verdict(models: dict, by_year: dict) -> str:
     trend_gain = trend_w - raw_w
     driver = ("CVE age carries essentially all of it; the EPSS trend adds almost nothing "
               f"(within-date ROC-AUC raw {raw_w:.2f}, +age {age_w:.2f}, +trend {trend_w:.2f})")
+    plat_bss = models["epss_platt"]["brier_skill_vs_base_rate"]
+    age_bss = models["epss_age"]["brier_skill_vs_base_rate"]
     calib = ("Recalibration to the KEV target leaves EPSS's ranking unchanged (within-date "
-             "ROC-AUC identical to raw EPSS) and only rebases the probability to the KEV base rate; "
-             "on Brier it merely matches a constant base-rate forecast, so it adds no probabilistic "
-             "skill of its own.")
+             "ROC-AUC identical to raw EPSS) and only rebases the probability to the KEV base rate. "
+             f"On Brier every probability model sits at or just below a constant base-rate forecast "
+             f"(skill vs base-rate: recalibrated {plat_bss:+.3f}, EPSS+age {age_bss:+.3f}), so none "
+             "adds probabilistic skill; the gain is in ranking, not in the probability values.")
     target = ("The target is entry into the KEV catalogue, not the real exploitation start date, "
               "and absolute precision stays low (most entrants had very low EPSS), so this is "
               "justified only as a separate experimental ranking: EPSS stays the reference and the "
@@ -559,7 +640,7 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
         con.execute("PRAGMA threads=4")
         _lookup_tables(con, settings)
         all_dates = _epss_dates(settings)
-        evals = _monthly_eval_dates(all_dates, horizon, date(2022, 1, 1), today)
+        evals = _eval_dates(all_dates, horizon, date(2022, 1, 1), today)
         if not evals:
             raise ValueError("no usable EPSS history")
         train = [D for D in evals if D + timedelta(days=horizon) <= today]

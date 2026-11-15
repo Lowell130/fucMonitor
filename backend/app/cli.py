@@ -83,13 +83,13 @@ def _print_experiment(out: dict) -> None:
         print(f"  {yy}: dates={v['test_dates']:2d} pos={v['positives']:3d}  raw={v['raw_epss']:.3f}  "
               f"recal={v['epss_platt']:.3f}  +age={v['epss_age']:.3f}  +trend={v['epss_trend']:.3f}  "
               f"feat={v['feat_model']:.3f}")
-    print("\nPrecision/recall at fixed alert budgets per day:")
-    for b, d in out["precision_recall_by_budget_per_day"].items():
-        print(f"  budget {b}/day:")
-        for m in ("raw_epss", "feat_model"):
+    print("\nPrecision/recall at fixed alert budgets per evaluation date (not per calendar day):")
+    for b, d in out["precision_recall_by_budget_per_eval_date"].items():
+        print(f"  budget {b}/eval-date:")
+        for m in ("raw_epss", "epss_age", "feat_model"):
             x = d[m]
             print(f"    {m:12} prec={x['precision']:.3f} recall={x['recall']:.3f} "
-                  f"tp={x['tp']} lead_median={x['lead_median']}")
+                  f"tp_expected={x['tp_expected']} lead_median={x['lead_median']}")
     print(f"\n{out['repeated_cves_and_overlap']}")
     print(f"\nVerdict: {out['verdict']}")
     print("\nLimits:")

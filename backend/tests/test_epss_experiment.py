@@ -5,7 +5,7 @@ information from the future. These build a tiny synthetic point-in-time store an
 property at every seam, plus the invariants the report relies on.
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -60,12 +60,22 @@ def test_train_dates_never_use_unclosed_windows():
     assert date(2024, 3, 1) not in ex._train_dates(evals, date(2024, 3, 1), 30)
 
 
-def test_monthly_eval_dates_exclude_unelapsed_window():
+def test_eval_dates_exclude_unelapsed_window():
     dates = [date(2026, 10, 1), date(2026, 11, 1)]
     today = date(2026, 11, 14)
-    got = ex._monthly_eval_dates(dates, horizon=30, start=date(2022, 1, 1), today=today)
+    got = ex._eval_dates(dates, horizon=30, start=date(2022, 1, 1), today=today)
     assert date(2026, 10, 1) in got          # window closed 2026-10-31 <= today
     assert date(2026, 11, 1) not in got      # window closes 2026-12-01 > today
+
+
+def test_eval_dates_are_spaced_at_least_a_horizon_apart():
+    # Weekly snapshots: picking must skip to >= horizon days after the last pick, so the
+    # outcome windows (D, D+H] never overlap and no KEV entry is counted at two dates.
+    dates = [date(2024, 1, 1) + timedelta(days=7 * i) for i in range(40)]
+    today = date(2026, 1, 1)
+    got = ex._eval_dates(dates, horizon=30, start=date(2024, 1, 1), today=today)
+    gaps = [(got[i + 1] - got[i]).days for i in range(len(got) - 1)]
+    assert gaps and min(gaps) >= 30          # disjoint windows by construction
 
 
 def test_prior_snapshot_is_strictly_earlier():
@@ -182,23 +192,43 @@ def test_recalibration_is_monotone_so_within_date_rank_is_identical():
     assert ex._roc_auc(epss, y) == pytest.approx(ex._roc_auc(recal, y), abs=1e-9)
 
 
+def test_pr_auc_and_budget_are_tie_order_invariant():
+    import numpy as np
+
+    # Many exact ties (as EPSS has): the metric must not depend on how tied rows are ordered.
+    rng = np.random.default_rng(1)
+    score = np.repeat(np.array([0.9, 0.5, 0.5, 0.5, 0.1]), 20).astype(float)
+    y = (rng.random(len(score)) < 0.3).astype(float)
+    ap1 = ex._ap(score, y)
+    roc1 = ex._roc_auc(score, y)
+    perm = rng.permutation(len(score))
+    ap2 = ex._ap(score[perm], y[perm])
+    roc2 = ex._roc_auc(score[perm], y[perm])
+    assert ap1 == pytest.approx(ap2, abs=1e-9)
+    assert roc1 == pytest.approx(roc2, abs=1e-9)
+    # budget expected-TP is also permutation-invariant when the boundary lands inside a tie group
+    allrows = [np.arange(len(score))]
+    b1 = ex._budget(score, y, np.full(len(score), -1), allrows, fixed=25)
+    b2 = ex._budget(score[perm], y[perm], np.full(len(score), -1), allrows, fixed=25)
+    assert b1["tp_expected"] == pytest.approx(b2["tp_expected"], abs=1e-9)
+
+
 def test_run_smoke_and_no_leakage_invariants(settings):
     """A small end-to-end run: enough monthly snapshots and positives to train and score."""
     import numpy as np
 
-    # 12 monthly snapshots in 2024; a cohort of CVEs, a handful entering KEV each month.
-    months = [date(2024, m, 2) for m in range(1, 13)]
-    # trend snapshots ~28 days before each eval date
-    priors = [date(2023, 12, 5)] + [date(2024, m, 5) for m in range(1, 12)]
-    cves = [f"CVE-X{i:03d}" for i in range(200)]
+    # ~20 months of snapshots so that, after >=30-day spacing, plenty of eval dates remain.
+    months = [date(2024, 1, 2) + timedelta(days=31 * i) for i in range(20)]
+    priors = [m - timedelta(days=28) for m in months]
+    cves = [f"CVE-X{i:03d}" for i in range(300)]
     for day in sorted(set(months + priors)):
         rows = [(c, 0.01 + (i % 50) / 100.0) for i, c in enumerate(cves)]
         _epss_snapshot(settings, day, rows)
-    # 5 CVEs enter KEV in the window after each eval month (distinct CVEs each time)
+    # 5 CVEs enter KEV ~10 days into the window after each eval date (distinct CVEs each time)
     kev_rows = []
     for j, day in enumerate(months):
         for k in range(5):
-            kev_rows.append((cves[j * 5 + k], day.replace(day=20)))
+            kev_rows.append((cves[j * 5 + k], day + timedelta(days=10)))
     _kev(settings, kev_rows)
     _nvd(settings, [(c, date(2023, 1, 1)) for c in cves])
 
@@ -216,8 +246,9 @@ def test_run_smoke_and_no_leakage_invariants(settings):
     # base_rate has a Brier but no ranking metrics
     assert "roc_auc_pooled" not in out["models"]["base_rate"]
     assert out["models"]["base_rate"]["brier_skill_vs_base_rate"] == pytest.approx(0.0, abs=1e-9)
-    # every positive is a distinct CVE (no overlapping-window double count)
-    assert "distinct" in out["repeated_cves_and_overlap"] or "only one date" in out["repeated_cves_and_overlap"]
+    # windows are disjoint by construction (spacing >= horizon), so no double counting
+    assert out["windows_disjoint"] is True
+    assert "exactly one date" in out["repeated_cves_and_overlap"]
 
     # the live scorer runs on numpy alone (no pandas) and reports a sane population count
     scored = ex.score_current(settings, horizon=30, top=10, neg_ratio=20)
