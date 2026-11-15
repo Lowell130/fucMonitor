@@ -256,7 +256,7 @@ def _roc_auc(score: np.ndarray, y: np.ndarray) -> float:
 def _ap(score: np.ndarray, y: np.ndarray) -> float:
     """Average precision, tie-safe: operating points are defined only at the boundaries between
     groups of equal score, so tied examples are never split by their arbitrary input order."""
-    order = np.argsort(-score, kind="mergesort")
+    order = np.argsort(-score)
     s = score[order]
     ys = y[order]
     P = ys.sum()
@@ -310,7 +310,7 @@ def _budget(score, y, d2k, groups, fixed=None):
         if b <= 0:
             fn += P
             continue
-        order = np.argsort(-sc, kind="mergesort")
+        order = np.argsort(-sc)
         sc_s = sc[order]
         ids_s = ids[order]
         yy_s = yy[order]
@@ -448,6 +448,17 @@ def run_cached(settings: Settings, horizon: int = 30) -> dict:
 def evaluate(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 40,
              min_train_pos: int = 30, budgets=(5, 10, 20, 50, 100), seed: int = 42) -> dict:
     """Walk-forward training, scoring and metrics over pre-assembled feature arrays."""
+    wf = score_walk_forward(evals, data, horizon, neg_ratio, min_train_pos, seed)
+    return compute_metrics(wf, horizon, budgets)
+
+
+def score_walk_forward(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 40,
+                       min_train_pos: int = 30, seed: int = 42) -> dict:
+    """The walk-forward training and scoring half: returns the pooled per-row scores and labels.
+
+    Split from the metrics so a caller can cache it (it is the expensive half) and so the two
+    halves can be tested independently. No metric is computed here.
+    """
     rng = np.random.default_rng(seed)
     rec = {m: [] for m in MODELS}
     ry, ryr, rd2k, rdid, scored = [], [], [], [], []
@@ -487,13 +498,30 @@ def evaluate(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 
         raise ValueError("no test date had enough training history")
 
     eval_gaps = [(scored[i + 1] - scored[i]).days for i in range(len(scored) - 1)]
-    del data  # free the per-date feature dict before the pooled metric pass
+    del data  # free the per-date feature dict before pooling
+    return {
+        "S": {m: np.concatenate(rec[m]) for m in MODELS},
+        "y": np.concatenate(ry),
+        "yr": np.concatenate(ryr),
+        "d2k": np.concatenate(rd2k),
+        "dateid": np.concatenate(rdid),
+        "within": within,
+        "scored": [str(s) for s in scored],
+        "eval_gaps": eval_gaps,
+    }
 
-    S = {m: np.concatenate(rec[m]) for m in MODELS}
-    y = np.concatenate(ry)
-    yr = np.concatenate(ryr)
-    d2k = np.concatenate(rd2k)
-    dateid = np.concatenate(rdid)
+
+def compute_metrics(wf: dict, horizon: int = 30, budgets=(5, 10, 20, 50, 100)) -> dict:
+    """The metrics half: pooled and within-date ROC-AUC, PR-AUC, Brier + skill, calibration,
+    precision/recall at alert budgets, lead time and per-year stability, over pooled scores."""
+    S = wf["S"]
+    y = wf["y"]
+    yr = wf["yr"]
+    d2k = wf["d2k"]
+    dateid = wf["dateid"]
+    within = wf["within"]
+    scored = wf["scored"]
+    eval_gaps = wf["eval_gaps"]
     brier_base = _brier(S["base_rate"], y)
 
     def model_block(m):
