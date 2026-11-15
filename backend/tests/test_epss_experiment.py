@@ -218,3 +218,9 @@ def test_run_smoke_and_no_leakage_invariants(settings):
     assert out["models"]["base_rate"]["brier_skill_vs_base_rate"] == pytest.approx(0.0, abs=1e-9)
     # every positive is a distinct CVE (no overlapping-window double count)
     assert "distinct" in out["repeated_cves_and_overlap"] or "only one date" in out["repeated_cves_and_overlap"]
+
+    # the live scorer runs on numpy alone (no pandas) and reports a sane population count
+    scored = ex.score_current(settings, horizon=30, top=10, neg_ratio=20)
+    assert "age" in scored["model"].lower()
+    assert scored["population"] >= len(scored["items"]) >= 1
+    assert all(it["age_days"] >= 0 for it in scored["items"])

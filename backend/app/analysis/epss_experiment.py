@@ -608,7 +608,7 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
         "model": "EPSS + CVE age (logistic, recalibrated to KEV target on closed-window history)",
         "what": "experimental ranking of likely KEV listing within the horizon",
         "not": "a probability of real-world exploitation, and not used in the category forecast",
-        "population": int(len(cur)),
+        "population": int(len(cve_ids)),
         "trained_on_test_dates": len(train),
         "items": items,
     }
