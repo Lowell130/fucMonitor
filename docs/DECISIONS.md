@@ -117,6 +117,27 @@ Prossimi passi, in ordine:
      corretto successivamente (niente prima-disponibilità né revisioni) e quasi tutto è backfillato
      ~1 anno dopo. Preparata la verifica futura: `scans.py` ora registra il valore di prima
      osservazione (`first_sources`/`first_seen_at`) in avanti, così un run futuro sarà verificabile.
+     Chiarimenti nel report: MAE/RMSE sono in **numero di vulnerabilità per categoria per finestra**;
+     gli intervalli hanno copertura **nominale 95%** (Byar/Poisson) contro il 71% osservato (la
+     previsione corre bassa); l'incertezza dalle sole 7 date di hold-out è riportata come CI 90%
+     bootstrap a livello di data; β=0 è descritto come assenza di beneficio della **combinazione
+     provata** (forecast × (1+β·relu(z))), non come prova che nessuna forma possa aiutare.
+     `first_seen_at` è il momento in cui *noi* abbiamo memorizzato il valore, mai una disponibilità
+     alla data osservata: va confrontato con `observed_date` (un divario ampio = backfill).
+
+Consolidamento e valutazione prospettica (fatto):
+
+- **Valutazione prospettica silenziosa** (`prediction_log.py`): ogni giorno lo scheduler congela
+  l'ordinamento del modello CVE sperimentale (EPSS+età) con data di emissione, versione del modello
+  e firma degli input, in un log **append-only** (`data/derived/predictions`, mai sovrascritto). Gli
+  esiti si valutano **solo a finestra conclusa** (`score-prospective`): è una verifica prospettica
+  reale, senza ricostruzione retrospettiva. Endpoint: `POST predictions/snapshot`, `GET
+  predictions/prospective`.
+- **Modello per singola CVE e previsione per categoria restano distinti**: il log prospettico
+  riguarda solo il modello CVE; la previsione per categoria ha il suo backtest e la sua verifica
+  scansioni.
+- **Notizie**: si lascia accumulare lo storico (sonda `news-readiness`); nessuna valutazione del
+  contributo finché non è pronto.
 3. Notizie (contenuto app): raggruppamento multilingue e verifica a campione della qualità delle regole.
 4. Revisione manuale della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
 5. Aggregazione per categoria e pagina Previsioni.

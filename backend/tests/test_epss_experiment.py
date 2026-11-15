@@ -329,3 +329,34 @@ def test_scan_experiment_handles_missing_data(settings):
     from app.analysis import scan_experiment
     out = scan_experiment.run(settings, horizon=90)
     assert out["methods"] == [] and "note" in out
+
+
+def test_prospective_log_snapshot_and_closed_window_scoring(settings):
+    """Freeze a prediction, then score only once its window has closed; append-only, no overwrite."""
+    from app.analysis import prediction_log as pl
+    from app.state import utcnow
+
+    # minimal live population so score_current works: a few CVEs, one snapshot, trend prior, NVD
+    latest = date(2026, 1, 5)
+    prior = date(2025, 12, 8)
+    cves = [f"CVE-P{i:03d}" for i in range(120)]
+    for day in (prior, latest):
+        _epss_snapshot(settings, day, [(c, 0.02 + (i % 40) / 100.0) for i, c in enumerate(cves)])
+    # training history so the model can fit (reuse monthly snapshots in 2025)
+    months = [date(2025, 1, 2) + timedelta(days=31 * i) for i in range(12)]
+    for day in months:
+        _epss_snapshot(settings, day, [(c, 0.02 + (i % 40) / 100.0) for i, c in enumerate(cves)])
+    kev_rows = [(cves[j * 3 + k], day + timedelta(days=8)) for j, day in enumerate(months) for k in range(3)]
+    _kev(settings, kev_rows)
+    _nvd(settings, [(c, date(2024, 1, 1)) for c in cves])
+
+    r = pl.snapshot_predictions(settings, horizon=30, top=20)
+    assert r["status"] == "logged" and r["n_predicted"] >= 1
+    # idempotent: a second call the same day does not overwrite
+    again = pl.snapshot_predictions(settings, horizon=30, top=20)
+    assert again["status"] == "already_logged"
+
+    # the snapshot's window (issued today + 30d) has not closed yet -> pending, nothing scored
+    sc = pl.score_prospective(settings, horizon=30)
+    assert sc["pending"] >= 1 and sc["closed"] == 0
+    assert sc["pooled_precision_at_k"] is None

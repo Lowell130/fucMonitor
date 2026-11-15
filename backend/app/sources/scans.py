@@ -46,9 +46,13 @@ SCHEMA = pa.schema(
         ("tcp_pct", pa.int32()),
         ("udp_pct", pa.int32()),
         ("retrieved_at", pa.timestamp("us", tz="UTC")),
-        # First value we ever stored for this observed day/port, and when. DShield revises recent
-        # days, and we otherwise keep only the latest, so these preserve what was available at the
-        # time: needed to tell a point-in-time scan feature from a retrospectively-corrected one.
+        # The first value WE ever stored for this observed day/port, and WHEN WE stored it.
+        # `first_seen_at` is our storage time, never a claim that the value existed on
+        # `observed_date`: for a back-filled day it is the back-fill time, long after the observed
+        # day. Genuine same-day availability is only implied when first_seen_at is close to
+        # observed_date (near-real-time collection); a large gap means it was reconstructed later.
+        # DShield revises recent days and we otherwise keep only the latest, so these let a future
+        # run tell a point-in-time scan value from a retrospectively-corrected one.
         ("first_sources", pa.int32()),
         ("first_seen_at", pa.timestamp("us", tz="UTC")),
     ]

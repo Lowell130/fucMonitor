@@ -51,6 +51,18 @@ def _schedule(settings) -> BackgroundScheduler | None:
         misfire_grace_time=600,
         coalesce=True,
     )
+    # Silent prospective evaluation: freeze today's CVE ranking once a day, after the morning
+    # ingest has refreshed EPSS/KEV. Idempotent per day; failures never disturb ingestion.
+    from .analysis import prediction_log
+
+    scheduler.add_job(
+        prediction_log.daily_snapshot,
+        CronTrigger(hour=7, minute=0, timezone="UTC"),
+        args=[settings],
+        id="prediction-snapshot",
+        misfire_grace_time=3600,
+        coalesce=True,
+    )
     scheduler.start()
     return scheduler
 
@@ -542,6 +554,25 @@ def epss_experiment_exploit_ablation(
         return epss_experiment.run_exploit_ablation_cached(get_settings(), horizon=horizon)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/api/v1/analysis/predictions/snapshot", tags=["analysis"])
+def predictions_snapshot(horizon: int = Query(30, ge=7, le=90)) -> dict:
+    """Freeze today's experimental CVE ranking for later, closed-window scoring. Idempotent per
+    day. Normally runs on a daily schedule; this triggers it manually."""
+    try:
+        from .analysis import prediction_log
+    except ImportError as exc:
+        raise HTTPException(503, f"needs numpy; rebuild the image: {exc}") from exc
+    return prediction_log.snapshot_predictions(get_settings(), horizon=horizon)
+
+
+@app.get("/api/v1/analysis/predictions/prospective", tags=["analysis"])
+def predictions_prospective(horizon: int = Query(30, ge=7, le=90)) -> dict:
+    """Score the frozen daily CVE predictions whose window has already closed, against real KEV
+    entries. A genuine prospective check with no retrospective reconstruction."""
+    from .analysis import prediction_log  # duckdb only; numpy not needed to score
+    return prediction_log.score_prospective(get_settings(), horizon=horizon)
 
 
 @app.get("/api/v1/analysis/scan-forecast-experiment", tags=["analysis"])

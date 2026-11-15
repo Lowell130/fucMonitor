@@ -32,6 +32,10 @@ def main(argv: list[str] | None = None) -> int:
     scan = sub.add_parser("scan-experiment", help="Does scanning help the category forecast?")
     scan.add_argument("--horizon", type=int, default=90, help="Days ahead: 30, 90 or 365")
     scan.add_argument("--json", action="store_true", help="Print the full result as JSON")
+    snap = sub.add_parser("snapshot-predictions", help="Freeze today's CVE ranking (prospective log)")
+    snap.add_argument("--horizon", type=int, default=30)
+    pro = sub.add_parser("score-prospective", help="Score frozen predictions whose window closed")
+    pro.add_argument("--horizon", type=int, default=30)
     args = parser.parse_args(argv)
 
     settings = get_settings()
@@ -70,6 +74,18 @@ def main(argv: list[str] | None = None) -> int:
 
         out = scan_experiment.run(settings, horizon=args.horizon)
         print(_json.dumps(out, indent=2))
+    elif args.command == "snapshot-predictions":
+        import json as _json
+
+        from .analysis import prediction_log
+
+        print(_json.dumps(prediction_log.snapshot_predictions(settings, horizon=args.horizon), indent=2))
+    elif args.command == "score-prospective":
+        import json as _json
+
+        from .analysis import prediction_log
+
+        print(_json.dumps(prediction_log.score_prospective(settings, horizon=args.horizon), indent=2))
     return 1 if failed else 0
 
 

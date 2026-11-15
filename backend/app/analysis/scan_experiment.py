@@ -155,7 +155,23 @@ def run(settings: Settings, horizon: int = 90, lookback: int = 180, step_days: i
             low, high = poisson_interval(p)
             inside += int(low <= o <= high)
         return {"mae": round(float(ae.mean()), 4), "rmse": round(float(np.sqrt((ae ** 2).mean())), 4),
-                "interval_coverage": round(inside / len(cells_), 4), "cells": len(cells_)}
+                "interval_coverage_observed": round(inside / len(cells_), 4),
+                "interval_coverage_nominal": 0.95,  # Byar/Poisson 95% (Z=1.96)
+                "cells": len(cells_)}
+
+    # Uncertainty from the small hold-out: the independent unit is the as_of date (cells within a
+    # date are correlated), and there are only a few. Bootstrap the MAE by resampling whole dates.
+    holo_by_date = {}
+    for c in holo:
+        holo_by_date.setdefault(c[0], []).append(c)
+    hdates = list(holo_by_date)
+    rng = np.random.default_rng(0)
+    boot = []
+    for _ in range(2000):
+        samp_dates = [hdates[i] for i in rng.integers(0, len(hdates), len(hdates))]
+        samp_cells = [cell for d in samp_dates for cell in holo_by_date[d]]
+        boot.append(mae(samp_cells, 0.0))
+    mae_ci90 = [round(float(np.percentile(boot, 5)), 4), round(float(np.percentile(boot, 95)), 4)]
 
     def alert_capture(cells_, beta, budgets):
         by_date = {}
@@ -179,13 +195,15 @@ def run(settings: Settings, horizon: int = 90, lookback: int = 180, step_days: i
            "alerts": alert_capture(holo, beta, budgets)}
 
     better_mae = aug["mae"] < base["mae"] - 1e-9
-    better_cov = aug["interval_coverage"] >= base["interval_coverage"] - 1e-9
+    better_cov = aug["interval_coverage_observed"] >= base["interval_coverage_observed"] - 1e-9
     better_alert = any(aug["alerts"][k]["events_caught"] > base["alerts"][k]["events_caught"] + 1e-9
                        for k in budgets)
     if beta == 0.0:
-        verdict = ("Training chose beta = 0: scanning does not reduce the count error even in "
-                   "training, so it adds nothing. Keep scanning as a flag beside the forecast, not "
-                   "fused into it.")
+        verdict = ("No benefit from the combination tried. The scanning adjustment was forecast x "
+                   "(1 + beta * relu(scan z-score)); training selected beta = 0, so no strength of "
+                   "this linear form reduced the count error even in training. A different way of "
+                   "combining scanning could still be tried, but this one did not help. Keep "
+                   "scanning as a flag beside the forecast, not fused into it.")
     elif better_mae and better_cov and better_alert:
         verdict = ("On the held-out tail, adding scanning lowers the count error, keeps interval "
                    "coverage and catches more at equal budget. A measurable benefit — candidate for "
@@ -199,11 +217,22 @@ def run(settings: Settings, horizon: int = 90, lookback: int = 180, step_days: i
         "experiment": "scanning added to the category forecast (dedicated check)",
         "horizon_days": horizon, "lookback_days": lookback, "step_days": step_days,
         "scan_window_days": scan_window, "scan_baseline_days": scan_baseline,
+        "count_unit": f"number of vulnerabilities (CVEs entering CISA KEV) per category "
+                      f"per {horizon}-day window; MAE and RMSE are in these event counts",
         "walk_forward": {"as_of_dates": len(as_of_sorted), "first": str(as_of_sorted[0]),
                          "last": str(as_of_sorted[-1]), "train_dates": len(sorted({c[0] for c in train})),
-                         "holdout_dates": len(sorted({c[0] for c in holo})),
+                         "holdout_dates": len(hdates),
                          "holdout_from": str(cut), "cells_holdout": len(holo),
                          "events_holdout": int(sum(c[3] for c in holo))},
+        "uncertainty": {
+            "note": f"The hold-out has only {len(hdates)} independent dates (cells within a date "
+                    "are correlated), so the metrics are noisy. The interval below is a "
+                    "date-level bootstrap 90% CI for the current method's MAE.",
+            "current_mae_ci90_over_dates": mae_ci90,
+            "n_holdout_dates": len(hdates)},
+        "interval_coverage_note": "intervals are Byar/Poisson with a nominal 95% level; the "
+                                  "observed coverage below is how often the actual count fell "
+                                  "inside, so well under 95% means the forecast runs biased low.",
         "selection": "beta chosen on training only (min count MAE); the hold-out tail is used only "
                      "for the metrics below.",
         "methods": {"current": base, "current_plus_scanning": aug},
