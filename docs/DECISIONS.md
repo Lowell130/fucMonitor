@@ -127,12 +127,21 @@ Prossimi passi, in ordine:
 
 Consolidamento e valutazione prospettica (fatto):
 
-- **Valutazione prospettica silenziosa** (`prediction_log.py`): ogni giorno lo scheduler congela
-  l'ordinamento del modello CVE sperimentale (EPSS+età) con data di emissione, versione del modello
-  e firma degli input, in un log **append-only** (`data/derived/predictions`, mai sovrascritto). Gli
-  esiti si valutano **solo a finestra conclusa** (`score-prospective`): è una verifica prospettica
-  reale, senza ricostruzione retrospettiva. Endpoint: `POST predictions/snapshot`, `GET
-  predictions/prospective`.
+- **Valutazione prospettica silenziosa** (`prediction_log.py`): ogni giorno lo scheduler congela,
+  in un log **append-only** (`data/derived/predictions`, mai sovrascritto), l'ordinamento del
+  modello CVE (EPSS+età) **insieme a quello di EPSS grezzo** (top-N di ciascuno, stessa popolazione
+  congelata), con data di emissione, versione del modello e firma degli input. Consolidamento:
+  1. salva modello **ed EPSS originale** insieme, per un confronto prospettico equo;
+  2. valuta **solo finestre realmente concluse e coperte dai dati** (ultima `date_added` KEV ≥ fine
+     finestra), altrimenti resta in attesa;
+  3. protegge lo storico con **scrittura atomica** (temp + replace) e **copia di sicurezza**;
+  4. registra in `_runs.jsonl` **esecuzioni, fallimenti, dati troppo vecchi** (`stale_inputs`) e
+     **giornate saltate**;
+  5. `score-prospective` confronta precision@k di **modello vs EPSS**. Verifica reale, senza
+     ricostruzione retrospettiva. Endpoint `POST predictions/snapshot`, `GET predictions/prospective`.
+- **Esperimento scansioni, separazione temporale corretta**: embargo di un orizzonte tra training e
+  hold-out — le date di training la cui finestra d'esito arriva nel periodo di hold-out vengono
+  scartate, così la scelta di β non usa informazioni dal periodo di valutazione.
 - **Modello per singola CVE e previsione per categoria restano distinti**: il log prospettico
   riguarda solo il modello CVE; la previsione per categoria ha il suo backtest e la sua verifica
   scansioni.

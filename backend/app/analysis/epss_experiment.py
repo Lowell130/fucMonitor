@@ -858,9 +858,15 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
     Zc = (Xc - mu) / sd
     Zd = np.column_stack([np.ones(len(Zc))] + [Zc[:, c] for c in cols])
     score = 1 / (1 + np.exp(-np.clip(Zd @ b, -30, 30)))
+
+    def rows_for(idx):
+        return [{"cve_id": str(cve_ids[i]), "score": round(float(score[i]), 5),
+                 "epss": round(float(ep[i]), 5), "age_days": int(age[i])} for i in idx]
+
     order = np.argsort(-score)[:top]
-    items = [{"cve_id": str(cve_ids[i]), "score": round(float(score[i]), 5),
-              "epss": round(float(ep[i]), 5), "age_days": int(age[i])} for i in order]
+    # Also the top-N by raw EPSS, so a prospective log can compare the model against EPSS head to
+    # head on the same frozen population (each ranking complete up to N).
+    epss_order = np.argsort(-ep)[:top]
     return {
         "as_of": str(latest),
         "horizon_days": horizon,
@@ -869,7 +875,8 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
         "not": "a probability of real-world exploitation, and not used in the category forecast",
         "population": int(len(cve_ids)),
         "trained_on_test_dates": len(train),
-        "items": items,
+        "items": rows_for(order),
+        "epss_items": rows_for(epss_order),
     }
 
 

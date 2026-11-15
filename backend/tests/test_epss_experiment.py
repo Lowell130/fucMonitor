@@ -5,6 +5,7 @@ information from the future. These build a tiny synthetic point-in-time store an
 property at every seam, plus the invariants the report relies on.
 """
 
+import json
 from datetime import date, datetime, timedelta, timezone
 
 import pyarrow as pa
@@ -352,11 +353,48 @@ def test_prospective_log_snapshot_and_closed_window_scoring(settings):
 
     r = pl.snapshot_predictions(settings, horizon=30, top=20)
     assert r["status"] == "logged" and r["n_predicted"] >= 1
+    # the snapshot stores both rankings (model_score and epss) per CVE
+    rec = json.loads((pl._log_dir(settings) / f"cve_kev_ranking_h30_{utcnow().date()}.json").read_text())
+    assert all({"cve_id", "model_score", "epss"} <= set(it) for it in rec["items"])
+    assert "stale_inputs" in rec and "inputs_signature" in rec
+    # atomic write left a backup copy and recorded the run
+    assert (pl._log_dir(settings) / "_backup").exists()
+    assert (pl._log_dir(settings) / "_runs.jsonl").exists()
     # idempotent: a second call the same day does not overwrite
     again = pl.snapshot_predictions(settings, horizon=30, top=20)
     assert again["status"] == "already_logged"
 
-    # the snapshot's window (issued today + 30d) has not closed yet -> pending, nothing scored
+    # window not closed yet -> pending, nothing scored
     sc = pl.score_prospective(settings, horizon=30)
-    assert sc["pending"] >= 1 and sc["closed"] == 0
+    assert sc["pending_window_open"] >= 1 and sc["closed_scored"] == 0
     assert sc["pooled_precision_at_k"] is None
+
+
+def test_prospective_scoring_requires_closed_and_covered_window(settings):
+    """A window that elapsed but is not covered by KEV data is not scored; a covered one is."""
+    import json as _json
+    from app.analysis import prediction_log as pl
+
+    # KEV data reaches to 2026-02-01 (latest date_added); a true entrant at 2026-01-15
+    _kev(settings, [("CVE-HIT-0001", date(2026, 1, 15)), ("CVE-OLD-0001", date(2025, 1, 1)),
+                    ("CVE-LATE-0003", date(2026, 2, 1))])
+
+    def write_snap(issued, items):
+        rec = {"kind": "cve_kev_ranking", "issued_at": issued,
+               "window_closes": str(date.fromisoformat(issued) + timedelta(days=30)),
+               "model_version": "4", "items": items}
+        pl._snapshot_path(settings, 30, date.fromisoformat(issued)).parent.mkdir(parents=True, exist_ok=True)
+        pl._snapshot_path(settings, 30, date.fromisoformat(issued)).write_text(_json.dumps(rec))
+
+    # covered: issued 2026-01-05, closes 2026-02-04 ... but kev_max is 2026-01-15 < 2026-02-04
+    # so make a covered one that closes before kev_max, and an uncovered one after it.
+    write_snap("2025-12-20", [{"cve_id": "CVE-HIT-0001", "model_score": 0.9, "epss": 0.1},
+                              {"cve_id": "CVE-MISS-0002", "model_score": 0.8, "epss": 0.9}])  # closes 2026-01-19 <= kev_max
+    write_snap("2026-01-20", [{"cve_id": "CVE-X", "model_score": 0.5, "epss": 0.5}])          # closes 2026-02-19 > kev_max
+    out = pl.score_prospective(settings, horizon=30, ks=(1, 2))
+    assert out["closed_scored"] == 1                      # only the covered window
+    assert out["pending_data_not_covering_window"] == 1  # the uncovered one
+    # model ranked the true KEV entrant first, EPSS ranked it second -> model precision@1 higher
+    pm = out["pooled_precision_at_k"]["model"][1]
+    pe = out["pooled_precision_at_k"]["epss"][1]
+    assert pm == 1.0 and pe == 0.0

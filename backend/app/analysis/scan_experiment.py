@@ -134,10 +134,17 @@ def run(settings: Settings, horizon: int = 90, lookback: int = 180, step_days: i
 
     as_of_sorted = sorted({c[0] for c in cells})
     cut = as_of_sorted[int(len(as_of_sorted) * (1 - holdout_frac))] if len(as_of_sorted) > 2 else as_of_sorted[-1]
-    train = [c for c in cells if c[0] < cut]
+    # Embargo: a training date's outcome window is (D, D+horizon]. If D is just before `cut`, that
+    # window reaches into the hold-out period, so choosing beta on it would use information from the
+    # hold-out's timeframe. Keep in training only dates whose whole window closes before `cut`;
+    # dates in the (cut - horizon, cut) gap are dropped from both sides.
+    embargo = cut - timedelta(days=horizon)
+    train = [c for c in cells if c[0] < embargo]
     holo = [c for c in cells if c[0] >= cut]
+    dropped = len([c for c in cells if embargo <= c[0] < cut])
     if not train or not holo:
-        return {"note": "not enough cells to split train/hold-out", "methods": []}
+        return {"note": "not enough cells to split train/hold-out with the horizon embargo",
+                "methods": [], "embargo_days": horizon}
 
     # Choose beta on TRAIN only, minimising count MAE of the scanning-adjusted forecast.
     def mae(cells_, beta):
@@ -223,7 +230,8 @@ def run(settings: Settings, horizon: int = 90, lookback: int = 180, step_days: i
                          "last": str(as_of_sorted[-1]), "train_dates": len(sorted({c[0] for c in train})),
                          "holdout_dates": len(hdates),
                          "holdout_from": str(cut), "cells_holdout": len(holo),
-                         "events_holdout": int(sum(c[3] for c in holo))},
+                         "events_holdout": int(sum(c[3] for c in holo)),
+                         "embargo_days": horizon, "dropped_overlap_dates": dropped},
         "uncertainty": {
             "note": f"The hold-out has only {len(hdates)} independent dates (cells within a date "
                     "are correlated), so the metrics are noisy. The interval below is a "
@@ -233,8 +241,10 @@ def run(settings: Settings, horizon: int = 90, lookback: int = 180, step_days: i
         "interval_coverage_note": "intervals are Byar/Poisson with a nominal 95% level; the "
                                   "observed coverage below is how often the actual count fell "
                                   "inside, so well under 95% means the forecast runs biased low.",
-        "selection": "beta chosen on training only (min count MAE); the hold-out tail is used only "
-                     "for the metrics below.",
+        "selection": f"beta chosen on training only (min count MAE), with a {horizon}-day embargo: "
+                     "training dates whose outcome window reaches into the hold-out are dropped, so "
+                     "no hold-out-period information leaks into the choice. The hold-out tail is used "
+                     "only for the metrics below.",
         "methods": {"current": base, "current_plus_scanning": aug},
         "verdict": verdict,
         "limits": [
