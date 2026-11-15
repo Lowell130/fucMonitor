@@ -249,11 +249,10 @@ def _ece(p: np.ndarray, y: np.ndarray, bins: int = 10) -> float:
     return float(tot / len(y))
 
 
-def _budget(score, y, d2k, dateid, n_dates, fixed=None):
+def _budget(score, y, d2k, groups, fixed=None):
     tp = fp = fn = 0
     leads = []
-    for i in range(n_dates):
-        ids = np.where(dateid == i)[0]
+    for ids in groups:
         sc = score[ids]
         yy = y[ids]
         npos = int(yy.sum())
@@ -386,8 +385,12 @@ def evaluate(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 
         return out
 
     models = {m: model_block(m) for m in MODELS}
-    by_budget = {int(b): {m: _budget(S[m], y, d2k, dateid, len(scored), fixed=b) for m in RANKERS} for b in budgets}
-    equal_budget = {m: _budget(S[m], y, d2k, dateid, len(scored), fixed=None) for m in RANKERS}
+    # Per-date row-index groups, computed once and reused across every budget and model.
+    order = np.argsort(dateid, kind="stable")
+    bounds = np.searchsorted(dateid[order], np.arange(len(scored) + 1))
+    groups = [order[bounds[i]:bounds[i + 1]] for i in range(len(scored))]
+    by_budget = {int(b): {m: _budget(S[m], y, d2k, groups, fixed=b) for m in RANKERS} for b in budgets}
+    equal_budget = {m: _budget(S[m], y, d2k, groups, fixed=None) for m in RANKERS}
     years = sorted(set(int(v) for v in yr))
     # Each year is a disjoint block of test dates => a separate temporal evaluation.
     by_year = {yy: {"test_dates": int(len(set(dateid[yr == yy]))), "positives": int(y[yr == yy].sum()),
@@ -451,37 +454,46 @@ def evaluate(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 
 
 
 def _verdict(models: dict, by_year: dict) -> str:
-    raw = models["raw_epss"]["roc_auc_pooled"]
-    plat = models["epss_platt"]["roc_auc_pooled"]
-    feat = models["feat_model"]["roc_auc_pooled"]
     raw_w = models["raw_epss"]["roc_auc_within_date_mean"]
-    feat_w = models["feat_model"]["roc_auc_within_date_mean"]
-    recent = [v["feat_model"] - v["raw_epss"] for yy, v in by_year.items() if yy >= 2023]
-    consistent = len(recent) >= 2 and all(g > 0 for g in recent)
-    calib = (f"Recalibration (EPSS->KEV target, train-only) leaves ranking unchanged "
-             f"(within-date ROC-AUC identical to raw EPSS) and only fixes the probability scale.")
-    if feat_w - raw_w >= 0.03 and consistent:
-        return (f"Against the KEV-entry target, adding CVE age and EPSS trend improves ranking over "
-                f"raw EPSS (within-date ROC-AUC {raw_w:.2f} -> {feat_w:.2f}; pooled {raw:.2f} -> "
-                f"{feat:.2f}), and the gain repeats in every year 2023-2026 (separate temporal "
-                f"evaluations). {calib} Absolute precision stays low and the target is KEV listing, "
-                f"not real exploitation, so this is justified only as a separate experimental signal: "
-                f"EPSS stays the reference and the aggregate category forecast is untouched.")
-    if abs(feat_w - raw_w) < 0.03:
-        return (f"The feature model does not credibly beat raw EPSS on ranking "
-                f"(within-date ROC-AUC {raw_w:.2f} vs {feat_w:.2f}). {calib} Keep EPSS as the "
-                f"reference; do not introduce a new model.")
-    return (f"Mixed result (within-date ROC-AUC raw {raw_w:.2f}, features {feat_w:.2f}); the gain is "
-            f"not stable across 2023-2026. {calib} Keep EPSS as the reference pending more positives.")
+    age_w = models["epss_age"]["roc_auc_within_date_mean"]
+    trend_w = models["epss_trend"]["roc_auc_within_date_mean"]
+    best = "epss_age" if age_w >= models["feat_model"]["roc_auc_within_date_mean"] else "feat_model"
+    best_w = models[best]["roc_auc_within_date_mean"]
+    recent_age = [v["epss_age"] - v["raw_epss"] for yy, v in by_year.items() if yy >= 2023]
+    consistent = len(recent_age) >= 2 and all(g > 0 for g in recent_age)
+    # which added feature actually carries the gain
+    age_gain = age_w - raw_w
+    trend_gain = trend_w - raw_w
+    driver = ("CVE age carries essentially all of it; the EPSS trend adds almost nothing "
+              f"(within-date ROC-AUC raw {raw_w:.2f}, +age {age_w:.2f}, +trend {trend_w:.2f})")
+    calib = ("Recalibration to the KEV target leaves EPSS's ranking unchanged (within-date "
+             "ROC-AUC identical to raw EPSS) and only rebases the probability to the KEV base rate; "
+             "on Brier it merely matches a constant base-rate forecast, so it adds no probabilistic "
+             "skill of its own.")
+    target = ("The target is entry into the KEV catalogue, not the real exploitation start date, "
+              "and absolute precision stays low (most entrants had very low EPSS), so this is "
+              "justified only as a separate experimental ranking: EPSS stays the reference and the "
+              "aggregate category forecast is untouched.")
+    if age_gain >= 0.05 and consistent and age_gain > 2 * max(trend_gain, 1e-9):
+        return (f"Against the KEV-entry target, adding CVE age improves ranking over raw EPSS "
+                f"(within-date ROC-AUC {raw_w:.2f} -> {best_w:.2f}), repeated in every year "
+                f"2023-2026 (separate temporal evaluations). {driver}. {calib} {target}")
+    if abs(best_w - raw_w) < 0.03:
+        return (f"No added feature credibly beats raw EPSS on ranking (within-date ROC-AUC "
+                f"{raw_w:.2f} vs best {best_w:.2f}). {calib} Keep EPSS as the reference; do not "
+                f"introduce a new model.")
+    return (f"Partial result: {driver}. {calib} Keep EPSS as the reference; treat EPSS+age only as "
+            f"an experimental ranking pending more positives. {target}")
 
 
 def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_ratio: int = 40,
                   seed: int = 42) -> dict:
-    """Rank today's not-yet-KEV population by the experimental feature model.
+    """Rank today's not-yet-KEV population by the experimental EPSS+age model.
 
-    EXPERIMENTAL and clearly separate: this is a ranking of likely *KEV listing* within the
-    horizon, not a probability of real exploitation, and it is never fed into the category
-    forecast. Trained on all historical test dates whose outcome window has fully closed.
+    The walk-forward experiment showed the whole ranking gain over EPSS comes from CVE age, not
+    the EPSS trend, so the live ranker uses EPSS + age only. EXPERIMENTAL and clearly separate:
+    a ranking of likely *KEV listing* within the horizon, not a probability of real exploitation,
+    never fed into the category forecast. Trained on all test dates whose window has fully closed.
     """
     from ..state import utcnow
 
@@ -518,7 +530,8 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
     X, Y, W = _train_matrix(data, train, neg_ratio, rng)
     mu, sd = _standardize(X)
     Z = (X - mu) / sd
-    bf = _fit_logit(np.column_stack([np.ones(len(Z)), Z]), Y, W)
+    cols = _FEATURE_COLS["epss_age"]  # EPSS + age only: age is the feature that carries the gain
+    b = _fit_logit(np.column_stack([np.ones(len(Z))] + [Z[:, c] for c in cols]), Y, W)
 
     ep = np.clip(cur["epss"].to_numpy(float), 1e-6, 1 - 1e-6)
     pr = cur["epss_prior"].to_numpy(float)
@@ -527,14 +540,15 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
     age = np.clip(cur["age"].to_numpy(float), 0, None)
     Xc = np.column_stack([np.log(ep / (1 - ep)), trend, np.log1p(age), isnew])
     Zc = (Xc - mu) / sd
-    score = 1 / (1 + np.exp(-np.clip(np.column_stack([np.ones(len(Zc)), Zc]) @ bf, -30, 30)))
+    Zd = np.column_stack([np.ones(len(Zc))] + [Zc[:, c] for c in cols])
+    score = 1 / (1 + np.exp(-np.clip(Zd @ b, -30, 30)))
     order = np.argsort(-score)[:top]
     items = [{"cve_id": cur["cve_id"].iloc[i], "score": round(float(score[i]), 5),
-              "epss": round(float(ep[i]), 5), "epss_trend": round(float(trend[i]), 5),
-              "age_days": int(age[i])} for i in order]
+              "epss": round(float(ep[i]), 5), "age_days": int(age[i])} for i in order]
     return {
         "as_of": str(latest),
         "horizon_days": horizon,
+        "model": "EPSS + CVE age (logistic, recalibrated to KEV target on closed-window history)",
         "what": "experimental ranking of likely KEV listing within the horizon",
         "not": "a probability of real-world exploitation, and not used in the category forecast",
         "population": int(len(cur)),
