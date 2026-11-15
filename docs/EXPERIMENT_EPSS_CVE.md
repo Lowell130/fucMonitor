@@ -69,74 +69,80 @@ esperimenti separati, come richiesto.
   etichetta d'addestramento era interamente osservabile allora.
 - I negativi sono sottocampionati per l'addestramento e **ri-pesati** per preservare la
   calibrazione; le metriche sono sempre calcolate sulla **popolazione intera** a D.
-- **CVE ripetute e finestre sovrapposte.** Le date mensili distano 27–35 giorni contro una
-  finestra di 30, quindi le finestre d'esito consecutive di una CVE quasi non si sovrappongono.
-  Una CVE ricorre come esempio (CVE, data) finché resta non elencata: ogni occasione è una
-  previsione distinta. Un positivo (primo ingresso in KEV) può accadere a **una sola** data,
-  perché la CVE esce dalla popolazione una volta elencata: i positivi non vengono mai contati due
-  volte.
+- **CVE ripetute e finestre sovrapposte.** Le date di test sono scelte a **distanza ≥ orizzonte**
+  (`_eval_dates`): qui 30–35 giorni l'una dall'altra per una finestra di 30, quindi le finestre
+  d'esito `(D, D+30]` sono **disgiunte per costruzione** — un ingresso in KEV cade in al più una
+  finestra e non è mai contato due volte. Una CVE ricorre come esempio (CVE, data) solo finché
+  resta non elencata; appena entra in KEV è esclusa da ogni data successiva, quindi un positivo
+  (primo ingresso) è contato a **esattamente una** data. Un ingresso che cade nel piccolo
+  intervallo tra la fine di una finestra e lo snapshot successivo non è contato da nessuna parte
+  (scelta conservativa), mai due volte. Il report espone `windows_disjoint: true`.
 - **Anni 2023–2026 = valutazioni temporali separate**: ogni anno è un blocco disgiunto di date di
   test, valutato indipendentemente.
-- Metriche: ROC-AUC entro-data (discriminazione, robusta ai pareggi) e pooled; PR-AUC; Brier con
-  BSS rispetto a una previsione costante pari alla frequenza base appresa solo sull'addestramento;
-  calibrazione; precisione/richiamo a parità di numero di allerte; anticipo rispetto all'ingresso
-  in KEV; stabilità per anno.
+- Metriche: ROC-AUC entro-data (discriminazione, con ranghi medi sui pareggi) e pooled; PR-AUC
+  (punti operativi solo ai confini dei gruppi di punteggio uguale, quindi robusta ai pareggi);
+  Brier con BSS rispetto a una previsione costante pari alla frequenza base appresa solo
+  sull'addestramento; calibrazione; precisione/richiamo a parità di numero di allerte (conteggio
+  *atteso* dei positivi quando il budget cade dentro un gruppo di punteggi uguali); anticipo
+  rispetto all'ingresso in KEV; stabilità per anno.
 
 ## 6. Confronto con EPSS (risultati verificati)
 
-Walk-forward a 30 giorni: **56 date mensili, 2022-03-02 → 2026-10-01, 13 985 104 esempi
-(CVE × data), 881 positivi, prevalenza 6,3·10⁻⁵.**
+Walk-forward a 30 giorni: **50 date di test (distanza ≥ 30 giorni), 2022-02-09 → 2026-10-11,
+12 517 734 esempi (CVE × data), 778 positivi, prevalenza 6,2·10⁻⁵.** Finestre disgiunte (distanza
+min 30, mediana 35, max 35 giorni).
 
 | Modello | ROC-AUC entro-data | ROC-AUC pooled | Brier | BSS vs base-rate |
 | --- | --- | --- | --- | --- |
-| frequenza costante (base-rate) | — | — | 0,000063 | 0,000 |
-| EPSS grezzo | 0,620 | 0,744 | 0,014995 | **−237** |
-| EPSS ricalibrato (Platt, train-only) | 0,620 | 0,762 | 0,000063 | −0,003 |
-| EPSS + età | **0,848** | **0,879** | 0,000063 | −0,005 |
-| EPSS + trend | 0,619 | 0,762 | 0,000063 | −0,005 |
-| EPSS + età + trend + is_new | 0,832 | 0,866 | 0,000063 | −0,007 |
+| frequenza costante (base-rate) | — | — | 0,000062 | 0,000 |
+| EPSS grezzo | 0,644 | 0,738 | 0,014887 | **−238,5** |
+| EPSS ricalibrato (Platt, train-only) | 0,644 | 0,752 | 0,000062 | −0,000 |
+| EPSS + età | **0,874** | **0,888** | 0,000062 | −0,002 |
+| EPSS + trend | 0,642 | 0,717 | 0,001158 | −17,6 |
+| EPSS + età + trend + is_new | 0,864 | 0,846 | 0,001267 | −19,4 |
 
-Contributo separato delle feature (ROC-AUC entro-data): EPSS 0,620 → **+età 0,848** →
-+trend 0,619. **Tutto il guadagno viene dall'età della CVE; il trend EPSS non aggiunge
-praticamente nulla.** Il modello completo (0,832) è perfino leggermente sotto il solo-età,
-perché il trend inutile aggiunge rumore.
+Contributo separato delle feature (ROC-AUC entro-data): EPSS 0,644 → **+età 0,874** →
++trend 0,642. **Tutto il guadagno viene dall'età della CVE; il trend EPSS non aggiunge nulla.**
+Il solo-età (EPSS+età) è anche il **meglio calibrato** (Brier 0,000062): aggiungere trend e
+is_new peggiora la calibrazione (Brier 0,00116–0,00127, BSS −17…−19) senza migliorare il ranking.
+Quindi il modello da preferire è **EPSS+età**.
 
 Stabilità per anno (ROC-AUC, EPSS+età vs EPSS grezzo), valutazioni temporali separate:
 
 | Anno | positivi | EPSS grezzo | EPSS+età |
 | --- | --- | --- | --- |
-| 2022 | 427 | 0,823 | 0,813 |
-| 2023 | 92 | 0,570 | **0,723** |
-| 2024 | 91 | 0,667 | **0,877** |
-| 2025 | 126 | 0,608 | **0,882** |
-| 2026 | 145 | 0,629 | **0,892** |
+| 2022 | 358 | 0,838 | 0,865 |
+| 2023 | 90 | 0,593 | **0,756** |
+| 2024 | 91 | 0,631 | **0,902** |
+| 2025 | 112 | 0,620 | **0,892** |
+| 2026 | 127 | 0,628 | **0,893** |
 
-Il 2022 è anomalo: coincide con l'espansione di copertura del modello EPSS v2022.01.01 (la
-popolazione raddoppia) e con un inserimento massivo di arretrati in KEV (219 positivi a marzo).
-Lì l'età non aiuta, perché gli arretrati riguardano CVE vecchie. Dal 2023 in poi il guadagno
+Il 2022 è anomalo (espansione di copertura del modello EPSS v2022.01.01 e inserimento massivo di
+arretrati in KEV): lì EPSS grezzo è già alto e l'età aggiunge poco. Dal 2023 in poi il guadagno
 dell'età è netto e ripetuto ogni anno.
 
-Precisione/richiamo a parità di allerte (pooled), EPSS grezzo vs EPSS+età:
+Precisione/richiamo a parità di allerte **per data di valutazione** (non al giorno; veri positivi
+*attesi* per via dei pareggi), EPSS grezzo vs EPSS+età:
 
-| Budget/giorno | EPSS: veri positivi (richiamo) | EPSS+età: veri positivi (richiamo) |
+| Allerte/data | EPSS: veri positivi attesi (richiamo) | EPSS+età: veri positivi attesi (richiamo) |
 | --- | --- | --- |
-| 10 | 9 (1,0 %) | 15 (1,7 %) |
-| 50 | 30 (3,4 %) | 41 (4,6 %) |
-| 100 | 42 (4,8 %) | 54 (6,1 %) |
+| 10 | 10 (1,3 %) | 16 (2,1 %) |
+| 50 | 31 (4,0 %) | 38 (4,9 %) |
+| 100 | 50 (6,4 %) | 56 (7,2 %) |
 
-Anticipo mediano rispetto all'ingresso in KEV: ~13–15 giorni per entrambi.
-**PR-AUC** ≈ 0 per tutti (prevalenza 6·10⁻⁵, dominata dai pareggi): non è la metrica guida qui.
+**PR-AUC** ≈ 0 per tutti (prevalenza 6·10⁻⁵): non è la metrica guida qui.
 
 ### Interpretazione onesta
 
 - **La differenza ROC-AUC tra EPSS grezzo e ricalibrato è un artefatto, non discriminazione.**
-  Entro la stessa data i due sono **identici** (0,620 = 0,620): Platt è monotòno in EPSS e non
-  può cambiare l'ordine. La differenza *pooled* (0,744 vs 0,762) nasce solo perché la
+  Entro la stessa data i due sono **identici** (0,644 = 0,644): Platt è monotòno in EPSS e non
+  può cambiare l'ordine. La differenza *pooled* (0,738 vs 0,752) nasce solo perché la
   ricalibrazione usa coefficienti diversi per ogni data, alterando la comparabilità **fra** date.
-- **Il Brier migliora solo per ri-ancoraggio alla frequenza base, non per abilità.** EPSS grezzo
-  come probabilità ha BSS −237 (la sua scala è per un evento più frequente). I modelli
-  ricalibrati arrivano a BSS ≈ 0, cioè **eguagliano** una previsione costante pari alla
-  prevalenza, ma non la battono. Nessun modello aggiunge abilità probabilistica propria sul Brier.
+- **Il Brier non migliora: nessun modello batte la frequenza costante.** EPSS grezzo come
+  probabilità ha BSS −238 (la sua scala è per un evento più frequente). I modelli ricalibrati
+  arrivano a BSS leggermente *negativo* (ricalibrato −0,000, EPSS+età −0,002): sono **un filo
+  peggiori** di una previsione costante pari alla prevalenza, non migliori. Nessun modello aggiunge
+  abilità probabilistica: il valore è solo nell'ordinamento, non nei valori di probabilità.
 - **Il segnale reale è la discriminazione, e viene dall'età.** EPSS+età ordina meglio di EPSS da
   solo gli ingressi imminenti in KEV, in modo stabile dal 2023 al 2026.
 - **La performance assoluta resta bassa.** Il 55 % degli ingressi KEV aveva EPSS < 0,05 alla data
@@ -181,4 +187,4 @@ tengano distinti disponibilità di exploit, attività di scansione e sfruttament
 una codifica più ricca della recency (tempo dalla pubblicazione a fasce, interazione con EPSS) e
 ripetere a 7 e 90 giorni con confronti appropriati. Non dichiarare il modello «migliore» di EPSS
 oltre a quanto mostrato: batte EPSS **sull'ordinamento degli ingressi in KEV** (ROC-AUC entro-data
-0,62 → 0,85, 2023–2026), **non** sulla calibrazione (Brier) né come prova di sfruttamento reale.
+0,64 → 0,87), **non** sulla calibrazione (Brier) né come prova di sfruttamento reale.

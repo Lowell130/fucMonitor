@@ -113,7 +113,7 @@ CISA KEV entro 30 giorni? Valutazione walk-forward senza informazioni dal futuro
 anti-contaminazione. Dettagli e numeri in `docs/EXPERIMENT_EPSS_CVE.md`.
 
 In breve: EPSS + età della CVE ordina gli ingressi imminenti in KEV meglio di EPSS da solo
-(ROC-AUC entro-data 0,62 → 0,85, stabile 2023–2026); il guadagno viene **tutto dall'età**, non
+(ROC-AUC entro-data 0,64 → 0,87, stabile 2023–2026); il guadagno viene **tutto dall'età**, non
 dal trend EPSS. La ricalibrazione non cambia l'ordine e sul Brier eguaglia solo la frequenza
 base. La performance assoluta resta bassa e il bersaglio è l'ingresso nel **catalogo**, non la
 data reale di sfruttamento. EPSS resta il riferimento.

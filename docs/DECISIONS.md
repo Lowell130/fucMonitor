@@ -75,7 +75,7 @@ Modello a livello CVE vs EPSS (fatto, vedi `docs/EXPERIMENT_EPSS_CVE.md`):
   temporali (9 test anti-leakage). Metriche: ROC-AUC entro-data e pooled, PR-AUC, Brier con BSS
   rispetto alla frequenza base, precisione/richiamo a parità di allerte, anticipo, stabilità.
 - Risultato: EPSS+età ordina gli ingressi imminenti in KEV meglio di EPSS da solo (ROC-AUC
-  entro-data 0,62 → 0,85, stabile 2023–2026). **Tutto il guadagno viene dall'età della CVE; il
+  entro-data 0,64 → 0,87, stabile 2023–2026). **Tutto il guadagno viene dall'età della CVE; il
   trend EPSS non aggiunge nulla.** La ricalibrazione non cambia l'ordine (monotòna) e sul Brier
   eguaglia soltanto la frequenza base. Performance assoluta bassa; bersaglio = catalogo, non
   sfruttamento reale. EPSS resta il riferimento; la previsione aggregata non è toccata.
