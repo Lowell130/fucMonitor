@@ -83,14 +83,23 @@ Modello a livello CVE vs EPSS (fatto, vedi `docs/EXPERIMENT_EPSS_CVE.md`):
   sfruttamento reale. EPSS resta il riferimento; la previsione aggregata non è toccata.
 - Integrato come esperimento separato: endpoint `epss-experiment` e scorer sperimentale EPSS+età,
   mai fusi nella previsione per categoria.
+- Ablation exploit pubblici (`epss-experiment --exploit-ablation`, endpoint `.../exploit-ablation`):
+  feature point-in-time «esiste un exploit pubblico (Exploit-DB/Metasploit) entro D», tenuta
+  distinta da scansioni e da sfruttamento confermato. Risultato: da solo l'exploit ordina debolmente
+  (ROC entro-data 0,61, segnale in calo negli anni) e **aggiunto a EPSS+età non cambia il ranking**
+  (0,87→0,88, pooled identico, inconsistente fra anni). Decisione: **non** aggiungere la feature
+  exploit; EPSS+età resta il modello sperimentale. La data usata è quella della fonte (ricostruzione
+  retrospettiva); Nuclei è escluso perché senza data.
 
 Prossimi passi, in ordine:
 
 1. Segnali anticipatori: scansioni aggregate da SANS ISC per porta e categoria, con rilevatore
    di impennate, affiancate alla previsione (mai fuse) e con un controllo storico — fatto — che
    misura se le impennate anticipano lo sfruttamento. Honeypot proprio o GreyNoise rimandati.
-2. Esperimenti separati: misurare se exploit pubblici, notizie o scansioni aggiungono capacità
-   predittiva oltre EPSS+età, tenendo distinti disponibilità di exploit, scansione e sfruttamento.
+2. Esperimenti separati sul contributo oltre EPSS+età, a disponibilità di exploit, scansione e
+   sfruttamento distinti: **exploit pubblici — fatto, nessun contributo**. Restano da misurare,
+   con lo stesso protocollo, scansioni (segnale point-in-time dai volumi DShield per categoria) e
+   notizie (citazioni CVE con data di prima osservazione), ciascuno come feature separata.
 3. Notizie: raggruppamento multilingue e verifica a campione della qualità delle regole.
 4. Revisione manuale della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
 5. Aggregazione per categoria e pagina Previsioni.

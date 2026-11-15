@@ -148,20 +148,46 @@ Precisione/richiamo a parità di allerte **per data di valutazione** (non al gio
 - **La performance assoluta resta bassa.** Il 55 % degli ingressi KEV aveva EPSS < 0,05 alla data
   di previsione: gran parte degli inserimenti non è anticipabile da queste feature.
 
+## 6-bis. Ablation: gli exploit pubblici aggiungono segnale? (verificato: no)
+
+Esperimento **separato** (`epss-experiment --exploit-ablation`), come richiesto dal prompt:
+«aggiungi exploit pubblici solo con esperimenti separati che ne misurino il contributo», tenendo
+distinti **disponibilità di exploit**, attività di scansione e sfruttamento confermato. Feature
+point-in-time: «esiste un exploit pubblico (Exploit-DB o Metasploit) con data della fonte ≤ D».
+La data è quella della fonte — ricostruzione retrospettiva fedele, non cattura live; Nuclei è
+escluso perché privo di data, quindi la copertura è parziale.
+
+| Modello | ROC-AUC entro-data | ROC-AUC pooled |
+| --- | --- | --- |
+| solo-exploit | 0,61 | 0,71 |
+| EPSS + età | 0,875 | 0,890 |
+| EPSS + età + exploit | 0,882 | 0,890 |
+
+L'exploit **da solo** ordina debolmente e il suo segnale **cala negli anni** (2022: 0,76 →
+2026: 0,55). **Aggiunto a EPSS+età non cambia il ranking** (0,875 → 0,882 entro-data, pooled
+identico, guadagno non consistente fra gli anni; a 100 allerte/data gli stessi 55 veri positivi).
+Decisione: **non** aggiungere la feature exploit; EPSS+età resta il modello sperimentale. Restano
+da misurare, con lo stesso protocollo e come feature separate, scansioni e notizie.
+
 ## 7. Cosa è stato integrato
 
 Seguendo il principio «integra soltanto risultati giustificati»:
 
 - Nuovo modulo `backend/app/analysis/epss_experiment.py` (riproducibile), CLI
-  `epss-experiment`, endpoint `GET /api/v1/analysis/epss-experiment` (report, in cache finché non
-  arrivano nuovi dati) e `GET /api/v1/analysis/epss-experiment/scores` (ordinamento sperimentale
-  delle CVE odierne con **EPSS+età**, chiaramente etichettato).
+  `epss-experiment` (con `--exploit-ablation`), endpoint `GET /api/v1/analysis/epss-experiment`
+  (report, in cache finché non cambiano gli input), `.../scores` (ordinamento sperimentale delle
+  CVE odierne con **EPSS+età**, etichettato) e `.../exploit-ablation`.
 - **EPSS resta il riferimento.** La previsione aggregata per categoria non è toccata; le
-  scansioni non sono fuse. Lo scorer sperimentale non alimenta la previsione.
-- 9 test anti-contaminazione (`backend/tests/test_epss_experiment.py`): selezione delle date di
-  addestramento, esclusione delle finestre non ancora chiuse, esclusione delle CVE già elencate e
-  di quelle non ancora pubblicate, trend che usa solo lo snapshot precedente, monotonicità della
-  ricalibrazione, prova end-to-end.
+  scansioni non sono fuse. Lo scorer sperimentale non alimenta la previsione; la feature exploit
+  non è stata aggiunta perché non migliora (§6-bis).
+- La cache si invalida su una firma che traccia versione del codice e ultimi snapshot
+  EPSS/KEV/NVD (e exploits per l'ablation): un nuovo ingresso KEV o un catalogo aggiornato forzano
+  il ricalcolo.
+- 12 test anti-contaminazione (`backend/tests/test_epss_experiment.py`): selezione delle date di
+  addestramento, distanza ≥ orizzonte (finestre disgiunte), esclusione delle finestre non ancora
+  chiuse, esclusione delle CVE già elencate e di quelle non ancora pubblicate, trend dal solo
+  snapshot precedente, monotonicità della ricalibrazione, robustezza ai pareggi di PR-AUC e budget,
+  feature exploit point-in-time, prove end-to-end.
 
 ## 8. Limiti
 
