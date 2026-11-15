@@ -527,6 +527,23 @@ def epss_experiment_scores(
         raise HTTPException(422, str(exc)) from exc
 
 
+@app.get("/api/v1/analysis/epss-experiment/exploit-ablation", tags=["analysis"])
+def epss_experiment_exploit_ablation(
+    horizon: int = Query(30, description="Outcome window in days: 30, 7 or 90"),
+) -> dict:
+    """Separate ablation: does 'a public exploit (Exploit-DB/Metasploit) exists by date D' add
+    ranking power over EPSS + CVE age for the KEV-entry target? Keeps exploit availability
+    distinct from scanning and from confirmed exploitation. Cached; first call can take minutes."""
+    try:
+        from .analysis import epss_experiment  # local import: numpy only needed here
+    except ImportError as exc:
+        raise HTTPException(503, f"experiment needs numpy; rebuild the image: {exc}") from exc
+    try:
+        return epss_experiment.run_exploit_ablation_cached(get_settings(), horizon=horizon)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.get("/api/v1/taxonomy", tags=["data"])
 def taxonomy() -> dict:
     return json.loads(TAXONOMY.read_text(encoding="utf-8"))

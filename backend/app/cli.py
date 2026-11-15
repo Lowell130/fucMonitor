@@ -27,6 +27,8 @@ def main(argv: list[str] | None = None) -> int:
     exp = sub.add_parser("epss-experiment", help="Walk-forward CVE-level vs EPSS comparison")
     exp.add_argument("--horizon", type=int, default=30, help="Outcome window in days: 30, 7 or 90")
     exp.add_argument("--json", action="store_true", help="Print the full result as JSON")
+    exp.add_argument("--exploit-ablation", action="store_true",
+                     help="Run the public-exploit ablation (EPSS+age vs EPSS+age+exploit) instead")
     args = parser.parse_args(argv)
 
     settings = get_settings()
@@ -50,7 +52,10 @@ def main(argv: list[str] | None = None) -> int:
 
         from .analysis import epss_experiment
 
-        out = epss_experiment.run_cached(settings, horizon=args.horizon)
+        if args.exploit_ablation:
+            out = epss_experiment.run_exploit_ablation_cached(settings, horizon=args.horizon)
+        else:
+            out = epss_experiment.run_cached(settings, horizon=args.horizon)
         if args.json:
             print(_json.dumps(out, indent=2))
         else:
@@ -62,33 +67,35 @@ def _print_experiment(out: dict) -> None:
     from .analysis import epss_experiment
 
     wf = out["walk_forward"]
+    model_names = list(out["models"].keys())
+    rankers = [m for m in model_names if "roc_auc_within_date_mean" in out["models"][m]]
+    if out.get("experiment"):
+        print(f"\nExperiment: {out['experiment']}")
     print(f"\nTarget: {out['target']}")
     print(f"  ({out['target_note']})")
-    print(f"Walk-forward: {wf['test_dates']} monthly dates {wf['first']}..{wf['last']}, "
+    print(f"Walk-forward: {wf['test_dates']} test dates {wf['first']}..{wf['last']}, "
           f"{wf['rows']:,} examples, {wf['positives']} positives (prevalence {wf['prevalence']:.2e})")
-    print(f"  eval-date gaps (days): {wf['eval_gap_days']}  vs horizon {out['horizon_days']}")
-    print(f"\n{'model':12}{'ROCpool':>9}{'ROCin-day':>10}{'PR-AUC':>9}{'Brier':>11}{'BSSvsBase':>11}{'ECE':>9}")
-    for m in epss_experiment.MODELS:
+    print(f"  eval-date gaps (days): {wf['eval_gap_days']}  vs horizon {out['horizon_days']}; "
+          f"windows_disjoint={out.get('windows_disjoint')}")
+    print(f"\n{'model':16}{'ROCpool':>9}{'ROCin-day':>10}{'PR-AUC':>9}{'Brier':>11}{'BSSvsBase':>11}{'ECE':>9}")
+    for m in model_names:
         r = out["models"][m]
         rp = f"{r['roc_auc_pooled']:9.3f}" if "roc_auc_pooled" in r else f"{'-':>9}"
         rw = f"{r['roc_auc_within_date_mean']:10.3f}" if "roc_auc_within_date_mean" in r else f"{'-':>10}"
         pr = f"{r['pr_auc']:9.4f}" if "pr_auc" in r else f"{'-':>9}"
         ec = f"{r['ece']:9.4f}" if "ece" in r else f"{'-':>9}"
-        print(f"{m:12}{rp}{rw}{pr}{r['brier']:11.6f}{r['brier_skill_vs_base_rate']:11.4f}{ec}")
-    print("\nContribution of each feature (within-date ROC-AUC mean):")
-    for m in ("raw_epss", "epss_platt", "epss_age", "epss_trend", "feat_model"):
-        print(f"  {m:12} {out['models'][m]['roc_auc_within_date_mean']:.3f}")
+        print(f"{m:16}{rp}{rw}{pr}{r['brier']:11.6f}{r['brier_skill_vs_base_rate']:11.4f}{ec}")
     print("\nROC-AUC by year (each year = a separate temporal evaluation):")
     for yy, v in out["roc_auc_by_year"].items():
-        print(f"  {yy}: dates={v['test_dates']:2d} pos={v['positives']:3d}  raw={v['raw_epss']:.3f}  "
-              f"recal={v['epss_platt']:.3f}  +age={v['epss_age']:.3f}  +trend={v['epss_trend']:.3f}  "
-              f"feat={v['feat_model']:.3f}")
+        line = f"  {yy}: dates={v['test_dates']:2d} pos={v['positives']:3d}  "
+        line += "  ".join(f"{m}={v[m]:.3f}" for m in rankers)
+        print(line)
     print("\nPrecision/recall at fixed alert budgets per evaluation date (not per calendar day):")
     for b, d in out["precision_recall_by_budget_per_eval_date"].items():
         print(f"  budget {b}/eval-date:")
-        for m in ("raw_epss", "epss_age", "feat_model"):
+        for m in rankers:
             x = d[m]
-            print(f"    {m:12} prec={x['precision']:.3f} recall={x['recall']:.3f} "
+            print(f"    {m:16} prec={x['precision']:.3f} recall={x['recall']:.3f} "
                   f"tp_expected={x['tp_expected']} lead_median={x['lead_median']}")
     print(f"\n{out['repeated_cves_and_overlap']}")
     print(f"\nVerdict: {out['verdict']}")

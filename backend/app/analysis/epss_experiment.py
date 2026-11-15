@@ -130,12 +130,20 @@ def _fetch(con: duckdb.DuckDBPyConnection, sql: str) -> dict:
 
 
 def _assemble(con: duckdb.DuckDBPyConnection, settings: Settings, D: date,
-              prior_file: str | None, horizon: int) -> dict:
-    """Point-in-time feature arrays for every CVE in the population at D (float32, no strings)."""
+              prior_file: str | None, horizon: int, with_exploit: bool = False) -> dict:
+    """Point-in-time feature arrays for every CVE in the population at D (float32, no strings).
+
+    `with_exploit` adds `x5` = a public exploit (Exploit-DB or Metasploit) was published by D per
+    the provider's own date. Like EPSS, that date is a faithful retrospective reconstruction from
+    provider metadata, not a live as-of capture; Nuclei carries no date and is left out.
+    """
     if prior_file:
         prior_cte = f"p AS (SELECT cve_id, epss AS epss_prior FROM read_parquet('{prior_file}'))"
     else:
         prior_cte = "p AS (SELECT NULL::VARCHAR cve_id, NULL::DOUBLE epss_prior WHERE 1=0)"
+    expl_select = (", CASE WHEN x.exploit_date IS NOT NULL AND x.exploit_date <= DATE '"
+                   + str(D) + "' THEN 1 ELSE 0 END AS has_exploit") if with_exploit else ""
+    expl_join = "LEFT JOIN expl x USING (cve_id)" if with_exploit else ""
     sql = f"""
         WITH e AS (SELECT cve_id, epss FROM read_parquet('{_epss_file(settings, D)}')),
         {prior_cte}
@@ -144,11 +152,12 @@ def _assemble(con: duckdb.DuckDBPyConnection, settings: Settings, D: date,
                CASE WHEN k.kev_date > DATE '{D}' AND k.kev_date <= DATE '{D}' + {horizon}
                     THEN 1 ELSE 0 END AS y,
                CASE WHEN k.kev_date > DATE '{D}' AND k.kev_date <= DATE '{D}' + {horizon}
-                    THEN date_diff('day', DATE '{D}', k.kev_date) ELSE -1 END AS d2k
+                    THEN date_diff('day', DATE '{D}', k.kev_date) ELSE -1 END AS d2k{expl_select}
         FROM e
         LEFT JOIN p USING (cve_id)
         LEFT JOIN kev k USING (cve_id)
         LEFT JOIN pub USING (cve_id)
+        {expl_join}
         WHERE (k.kev_date IS NULL OR k.kev_date > DATE '{D}')
           AND pub.published IS NOT NULL
           AND pub.published <= TIMESTAMP '{D} 23:59:59+00'
@@ -159,7 +168,7 @@ def _assemble(con: duckdb.DuckDBPyConnection, settings: Settings, D: date,
     is_new = np.isnan(pr).astype(np.float32)
     trend = np.where(np.isnan(pr), 0.0, ep - np.clip(pr, 1e-6, 1 - 1e-6)).astype(np.float32)
     age = np.clip(d["age"].astype(float), 0, None)
-    return {
+    out = {
         "epss": ep.astype(np.float32),
         "x1": np.log(ep / (1 - ep)).astype(np.float32),
         "x2": trend,
@@ -168,10 +177,17 @@ def _assemble(con: duckdb.DuckDBPyConnection, settings: Settings, D: date,
         "y": d["y"].astype(np.float32),
         "d2k": d["d2k"].astype(np.int32),
     }
+    if with_exploit:
+        out["x5"] = d["has_exploit"].astype(np.float32)
+    return out
 
 
-def _lookup_tables(con: duckdb.DuckDBPyConnection, settings: Settings) -> None:
-    """Point-in-time KEV first-entry date and NVD publication date, as temp tables."""
+def _lookup_tables(con: duckdb.DuckDBPyConnection, settings: Settings, with_exploit: bool = False) -> None:
+    """Point-in-time KEV first-entry date and NVD publication date, as temp tables.
+
+    With `with_exploit`, also build `expl`: the earliest provider date of a public exploit per
+    CVE, from Exploit-DB and Metasploit (both carry dates). Nuclei is excluded — it has none.
+    """
     kev_files = SOURCES["kev"].curated_files(settings)
     nvd_files = SOURCES["nvd"].curated_files(settings)
     con.execute(
@@ -184,6 +200,17 @@ def _lookup_tables(con: duckdb.DuckDBPyConnection, settings: Settings) -> None:
         "FROM read_parquet(?) GROUP BY 1",
         [nvd_files],
     )
+    if with_exploit:
+        files = SOURCES["exploits"].curated_files(settings)
+        if files:
+            con.execute(
+                "CREATE TEMP TABLE expl AS SELECT cve_id, min(provider_date) AS exploit_date "
+                "FROM read_parquet(?) WHERE provider_date IS NOT NULL "
+                "AND provider IN ('exploitdb', 'metasploit') GROUP BY 1",
+                [files],
+            )
+        else:
+            con.execute("CREATE TEMP TABLE expl (cve_id VARCHAR, exploit_date DATE)")
 
 
 # --- model (pure numpy logistic regression, L2, intercept unpenalised) -------
@@ -214,14 +241,18 @@ def _standardize(X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return mu, sd
 
 
-def _train_matrix(data: dict, train_dates: list[date], neg_ratio: int, rng: np.random.Generator):
+_DEFAULT_KEYS = ("x1", "x2", "x3", "isnew")
+
+
+def _train_matrix(data: dict, train_dates: list[date], neg_ratio: int, rng: np.random.Generator,
+                  feature_keys=_DEFAULT_KEYS):
     Xs, ys, ws = [], [], []
     for Dj in train_dates:
         d = data[Dj]
         y = d["y"]
         pos = y == 1
         neg = y == 0
-        Xall = np.column_stack([d["x1"], d["x2"], d["x3"], d["isnew"]])
+        Xall = np.column_stack([d[k] for k in feature_keys])
         npos = int(pos.sum())
         Xs.append(Xall[pos]); ys.append(y[pos]); ws.append(np.ones(npos))
         nneg = int(neg.sum())
@@ -355,13 +386,15 @@ _EXPERIMENT_VERSION = "3"
 # Ranking models (produce a per-CVE score). base_rate is a non-ranking reference for Brier.
 RANKERS = ("raw_epss", "epss_platt", "epss_age", "epss_trend", "feat_model")
 MODELS = ("base_rate",) + RANKERS
-# Which standardized feature columns (of [x1=logit epss, x2=trend, x3=age, isnew]) each fit uses.
+# Which standardized feature columns (indices into feature_keys) each fit uses. The default
+# feature_keys are (x1=logit epss, x2=trend, x3=age, isnew); the exploit ablation uses its own.
 _FEATURE_COLS = {"epss_platt": [0], "epss_age": [0, 2], "epss_trend": [0, 1], "feat_model": [0, 1, 2, 3]}
 
 
-def assemble_all(settings: Settings, horizon: int = 30, start: date | None = None) -> tuple[list[date], dict]:
-    """Build the point-in-time feature arrays for every monthly eval date. The slow half of a
-    run; split out so callers can cache it and so tests can exercise it directly."""
+def assemble_all(settings: Settings, horizon: int = 30, start: date | None = None,
+                 with_exploit: bool = False) -> tuple[list[date], dict]:
+    """Build the point-in-time feature arrays for every eval date. The slow half of a run; split
+    out so callers can cache it and so tests can exercise it directly."""
     from ..state import utcnow
 
     start = start or date(2022, 1, 1)
@@ -369,12 +402,12 @@ def assemble_all(settings: Settings, horizon: int = 30, start: date | None = Non
     con = duckdb.connect()
     try:
         con.execute("PRAGMA threads=4")
-        _lookup_tables(con, settings)
+        _lookup_tables(con, settings, with_exploit=with_exploit)
         all_dates = _epss_dates(settings)
         evals = _eval_dates(all_dates, horizon, start, today)
         if len(evals) < 6:
             raise ValueError("not enough EPSS history for a walk-forward run")
-        data = {D: _assemble(con, settings, D, _epss_file(settings, p) if (p := _prior_snapshot(all_dates, D)) else None, horizon)
+        data = {D: _assemble(con, settings, D, _epss_file(settings, p) if (p := _prior_snapshot(all_dates, D)) else None, horizon, with_exploit=with_exploit)
                 for D in evals}
     finally:
         con.close()
@@ -393,22 +426,26 @@ def run(settings: Settings, horizon: int = 30, neg_ratio: int = 40, min_train_po
     return evaluate(evals, data, horizon, neg_ratio, min_train_pos, budgets, seed)
 
 
-def _cache_path(settings: Settings, horizon: int) -> "Path":
+def _cache_path(settings: Settings, horizon: int, name: str = "epss_experiment") -> "Path":
     from pathlib import Path
 
-    return Path(settings.data_dir) / "derived" / f"epss_experiment_h{horizon}.json"
+    return Path(settings.data_dir) / "derived" / f"{name}_h{horizon}.json"
 
 
-def _inputs_signature(settings: Settings, horizon: int) -> str:
+def _inputs_signature(settings: Settings, horizon: int, with_exploit: bool = False) -> str:
     """A tag that changes whenever anything the result depends on changes: the experiment code
-    (`_EXPERIMENT_VERSION`), the horizon, and the newest EPSS, KEV and NVD snapshots. Keying the
-    cache on this, not on the EPSS date alone, stops it serving a result that newer KEV entries,
-    a newer NVD catalogue or a code change have made stale."""
+    (`_EXPERIMENT_VERSION`), the horizon, and the newest EPSS, KEV and NVD snapshots (plus the
+    exploits snapshot for the ablation). Keying the cache on this, not on the EPSS date alone,
+    stops it serving a result that newer KEV entries, a refreshed catalogue or a code change have
+    made stale."""
     def last(source: str) -> str:
         ds = SOURCES[source].snapshot_dates(settings)
         return str(ds[-1]) if ds else "none"
-    return (f"v{_EXPERIMENT_VERSION}|h{horizon}|epss={last('epss')}|"
-            f"kev={last('kev')}|nvd={last('nvd')}")
+    sig = (f"v{_EXPERIMENT_VERSION}|h{horizon}|epss={last('epss')}|"
+           f"kev={last('kev')}|nvd={last('nvd')}")
+    if with_exploit:
+        sig += f"|exploits={last('exploits')}"
+    return sig
 
 
 def run_cached(settings: Settings, horizon: int = 30) -> dict:
@@ -453,40 +490,50 @@ def evaluate(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 
 
 
 def score_walk_forward(evals: list[date], data: dict, horizon: int = 30, neg_ratio: int = 40,
-                       min_train_pos: int = 30, seed: int = 42) -> dict:
+                       min_train_pos: int = 30, seed: int = 42,
+                       feature_keys=_DEFAULT_KEYS, feature_cols=None, models=None) -> dict:
     """The walk-forward training and scoring half: returns the pooled per-row scores and labels.
 
     Split from the metrics so a caller can cache it (it is the expensive half) and so the two
-    halves can be tested independently. No metric is computed here.
+    halves can be tested independently. No metric is computed here. `feature_keys`/`feature_cols`/
+    `models` let a separate experiment (e.g. the exploit ablation) use a different feature set.
     """
+    feature_cols = _FEATURE_COLS if feature_cols is None else feature_cols
+    models = MODELS if models is None else models
+    rankers = [m for m in models if m != "base_rate"]
     rng = np.random.default_rng(seed)
-    rec = {m: [] for m in MODELS}
+    rec = {m: [] for m in models}
     ry, ryr, rd2k, rdid, scored = [], [], [], [], []
-    within = {m: [] for m in RANKERS}  # per-date ROC-AUC, to separate within-date from pooled
+    within = {m: [] for m in rankers}  # per-date ROC-AUC, to separate within-date from pooled
     for Dk in evals:
         # TRAIN ONLY on earlier test dates whose whole H-day window had already closed by Dk,
         # so every training label was fully observable then. No future information.
         train = _train_dates(evals, Dk, horizon)
         if sum(int(data[Dj]["y"].sum()) for Dj in train) < min_train_pos:
             continue
-        X, Y, W = _train_matrix(data, train, neg_ratio, rng)
+        X, Y, W = _train_matrix(data, train, neg_ratio, rng, feature_keys)
         mu, sd = _standardize(X)
         Z = (X - mu) / sd
         coef = {m: _fit_logit(np.column_stack([np.ones(len(Z))] + [Z[:, c] for c in cols]), Y, W)
-                for m, cols in _FEATURE_COLS.items()}
+                for m, cols in feature_cols.items() if m in models}
         base = float((W * Y).sum() / W.sum())  # constant prediction = training prevalence only
 
         t = data[Dk]
-        Xt = np.column_stack([t["x1"], t["x2"], t["x3"], t["isnew"]]).astype(float)
+        Xt = np.column_stack([t[k] for k in feature_keys]).astype(float)
         Zt = (Xt - mu) / sd
         yk = t["y"].astype(float)
-        sc = {"raw_epss": t["epss"].astype(float), "base_rate": np.full(len(yk), base)}
-        for m, cols in _FEATURE_COLS.items():
-            Zd = np.column_stack([np.ones(len(Zt))] + [Zt[:, c] for c in cols])
-            sc[m] = 1 / (1 + np.exp(-np.clip(Zd @ coef[m], -30, 30)))
-        for m in MODELS:
+        sc = {}
+        if "raw_epss" in models:
+            sc["raw_epss"] = t["epss"].astype(float)
+        if "base_rate" in models:
+            sc["base_rate"] = np.full(len(yk), base)
+        for m, cols in feature_cols.items():
+            if m in models:
+                Zd = np.column_stack([np.ones(len(Zt))] + [Zt[:, c] for c in cols])
+                sc[m] = 1 / (1 + np.exp(-np.clip(Zd @ coef[m], -30, 30)))
+        for m in models:
             rec[m].append(sc[m].astype(np.float32))  # float32 keeps the pooled arrays small
-        for m in RANKERS:
+        for m in rankers:
             within[m].append(_roc_auc(sc[m], yk))
         ry.append(yk.astype(np.float32))
         ryr.append(np.full(len(yk), Dk.year, dtype=np.int16))
@@ -500,7 +547,7 @@ def score_walk_forward(evals: list[date], data: dict, horizon: int = 30, neg_rat
     eval_gaps = [(scored[i + 1] - scored[i]).days for i in range(len(scored) - 1)]
     del data  # free the per-date feature dict before pooling
     return {
-        "S": {m: np.concatenate(rec[m]) for m in MODELS},
+        "S": {m: np.concatenate(rec[m]) for m in models},
         "y": np.concatenate(ry),
         "yr": np.concatenate(ryr),
         "d2k": np.concatenate(rd2k),
@@ -511,9 +558,13 @@ def score_walk_forward(evals: list[date], data: dict, horizon: int = 30, neg_rat
     }
 
 
-def compute_metrics(wf: dict, horizon: int = 30, budgets=(5, 10, 20, 50, 100)) -> dict:
+def compute_metrics(wf: dict, horizon: int = 30, budgets=(5, 10, 20, 50, 100),
+                    verdict_fn=None) -> dict:
     """The metrics half: pooled and within-date ROC-AUC, PR-AUC, Brier + skill, calibration,
-    precision/recall at alert budgets, lead time and per-year stability, over pooled scores."""
+    precision/recall at alert budgets, lead time and per-year stability, over pooled scores.
+
+    The model set is taken from `wf`, so the same code serves the main run and any ablation.
+    """
     S = wf["S"]
     y = wf["y"]
     yr = wf["yr"]
@@ -522,13 +573,15 @@ def compute_metrics(wf: dict, horizon: int = 30, budgets=(5, 10, 20, 50, 100)) -
     within = wf["within"]
     scored = wf["scored"]
     eval_gaps = wf["eval_gaps"]
-    brier_base = _brier(S["base_rate"], y)
+    model_names = list(S.keys())
+    ranker_names = [m for m in model_names if m in within]
+    brier_base = _brier(S["base_rate"], y) if "base_rate" in S else None
 
     def model_block(m):
         b = _brier(S[m], y)
         out = {"brier": round(b, 6),
                "brier_skill_vs_base_rate": round(1 - b / brier_base, 4) if brier_base else None}
-        if m != "base_rate":
+        if m in ranker_names:
             out.update({
                 "roc_auc_pooled": round(_roc_auc(S[m], y), 4),
                 "roc_auc_within_date_mean": round(float(np.nanmean(within[m])), 4),
@@ -537,22 +590,28 @@ def compute_metrics(wf: dict, horizon: int = 30, budgets=(5, 10, 20, 50, 100)) -
             })
         return out
 
-    models = {m: model_block(m) for m in MODELS}
+    models = {m: model_block(m) for m in model_names}
     # Per-date row-index groups, computed once and reused across every budget and model.
     order = np.argsort(dateid, kind="stable")
     bounds = np.searchsorted(dateid[order], np.arange(len(scored) + 1))
     groups = [order[bounds[i]:bounds[i + 1]] for i in range(len(scored))]
-    by_budget = {int(b): {m: _budget(S[m], y, d2k, groups, fixed=b) for m in RANKERS} for b in budgets}
-    equal_budget = {m: _budget(S[m], y, d2k, groups, fixed=None) for m in RANKERS}
+    by_budget = {int(b): {m: _budget(S[m], y, d2k, groups, fixed=b) for m in ranker_names} for b in budgets}
+    equal_budget = {m: _budget(S[m], y, d2k, groups, fixed=None) for m in ranker_names}
     years = sorted(set(int(v) for v in yr))
     # Each year is a disjoint block of test dates => a separate temporal evaluation.
     by_year = {yy: {"test_dates": int(len(set(dateid[yr == yy]))), "positives": int(y[yr == yy].sum()),
-                    **{m: round(_roc_auc(S[m][yr == yy], y[yr == yy]), 4) for m in RANKERS}}
+                    **{m: round(_roc_auc(S[m][yr == yy], y[yr == yy]), 4) for m in ranker_names}}
                for yy in years}
 
-    raw_pool = models["raw_epss"]["roc_auc_pooled"]
-    feat_pool = models["feat_model"]["roc_auc_pooled"]
-    verdict = _verdict(models, by_year)
+    if verdict_fn is not None:
+        verdict = verdict_fn(models, by_year)
+    elif {"raw_epss", "epss_age", "epss_trend", "feat_model"} <= set(models):
+        verdict = _verdict(models, by_year)
+    else:
+        verdict = "see the per-model metrics above."
+    gain = None
+    if "feat_model" in models and "raw_epss" in models:
+        gain = round(models["feat_model"]["roc_auc_pooled"] - models["raw_epss"]["roc_auc_pooled"], 4)
     return {
         "target": f"first entry into CISA KEV within {horizon} days of the prediction date",
         "target_note": "entry into one known-exploitation catalogue (KEV = CISA Known Exploited "
@@ -599,7 +658,7 @@ def compute_metrics(wf: dict, horizon: int = 30, budgets=(5, 10, 20, 50, 100)) -
         "precision_recall_by_budget_per_eval_date": by_budget,
         "precision_recall_equal_budget": equal_budget,
         "roc_auc_by_year": by_year,
-        "feat_vs_raw_roc_gain_pooled": round(feat_pool - raw_pool, 4),
+        "feat_vs_raw_roc_gain_pooled": gain,
         "verdict": verdict,
         "limits": [
             "Measures anticipation of the KEV catalogue, not of all real exploitation.",
@@ -649,6 +708,88 @@ def _verdict(models: dict, by_year: dict) -> str:
                 f"introduce a new model.")
     return (f"Partial result: {driver}. {calib} Keep EPSS as the reference; treat EPSS+age only as "
             f"an experimental ranking pending more positives. {target}")
+
+
+# --- exploit ablation: does a public exploit add signal beyond EPSS + age? --------------------
+_ABLATION_KEYS = ("x1", "x3", "x5")  # logit(EPSS), log1p(age), has public exploit by D
+_ABLATION_COLS = {"epss_age": [0, 1], "epss_age_exploit": [0, 1, 2], "exploit_only": [2]}
+_ABLATION_MODELS = ("base_rate", "raw_epss", "epss_age", "epss_age_exploit", "exploit_only")
+
+
+def _verdict_exploit(models: dict, by_year: dict) -> str:
+    age_w = models["epss_age"]["roc_auc_within_date_mean"]
+    both_w = models["epss_age_exploit"]["roc_auc_within_date_mean"]
+    expl_w = models["exploit_only"]["roc_auc_within_date_mean"]
+    gain = both_w - age_w
+    recent = [v["epss_age_exploit"] - v["epss_age"] for yy, v in by_year.items() if yy >= 2023]
+    consistent = len(recent) >= 2 and all(g > 0 for g in recent)
+    head = (f"Public-exploit availability (Exploit-DB/Metasploit, by the provider's date) on its "
+            f"own ranks KEV entry at within-date ROC-AUC {expl_w:.2f}. ")
+    if gain >= 0.02 and consistent:
+        return (head + f"Added to EPSS+age it raises ranking from {age_w:.2f} to {both_w:.2f} "
+                f"(gain repeated 2023-2026), so it carries information beyond EPSS and age. Still a "
+                "separate experiment and still the KEV-listing target, not confirmed exploitation; "
+                "exploit availability stays distinct from scanning and from KEV. EPSS remains the "
+                "reference and the category forecast is untouched.")
+    if abs(gain) < 0.01:
+        return (head + f"Added to EPSS+age it does not change ranking ({age_w:.2f} -> {both_w:.2f}), "
+                "so a public exploit adds no information beyond EPSS and age for this target. Keep "
+                "EPSS+age; do not add the exploit feature.")
+    return (head + f"Added to EPSS+age the effect is small or unstable ({age_w:.2f} -> {both_w:.2f}), "
+            "not a credible improvement. Keep EPSS+age pending more positives.")
+
+
+def run_exploit_ablation(settings: Settings, horizon: int = 30, neg_ratio: int = 40,
+                         min_train_pos: int = 30, start: date | None = None,
+                         budgets=(5, 10, 20, 50, 100), seed: int = 42) -> dict:
+    """Separate ablation: measure whether 'a public exploit exists by date D' adds ranking power
+    over EPSS + CVE age for the KEV-entry target. Keeps exploit availability distinct from
+    scanning and from confirmed exploitation, and never touches the main run or the forecast."""
+    evals, data = assemble_all(settings, horizon, start, with_exploit=True)
+    wf = score_walk_forward(evals, data, horizon, neg_ratio, min_train_pos, seed,
+                            feature_keys=_ABLATION_KEYS, feature_cols=_ABLATION_COLS,
+                            models=_ABLATION_MODELS)
+    rep = compute_metrics(wf, horizon, budgets, verdict_fn=_verdict_exploit)
+    rep["experiment"] = "public-exploit ablation (vs EPSS + age)"
+    rep["features_used"] = ["logit(EPSS as of D)", "log1p(CVE age in days)",
+                            "public exploit published by D (Exploit-DB or Metasploit provider date)"]
+    rep["distinctions"] = ("Exploit availability (this feature), scanning activity (the scans "
+                           "source) and confirmed exploitation (KEV, the target) are kept separate. "
+                           "This measures only whether a public exploit had been published by D.")
+    rep["limits"] = rep["limits"] + [
+        "The exploit date is the provider's own date (Exploit-DB / Metasploit): a faithful "
+        "retrospective reconstruction, not a live as-of capture. Nuclei carries no date and is "
+        "excluded, so exploit coverage is partial.",
+        "A public exploit existing is not confirmed exploitation and not a KEV listing; this only "
+        "tests its value as a feature for anticipating the KEV listing.",
+    ]
+    return rep
+
+
+def run_exploit_ablation_cached(settings: Settings, horizon: int = 30) -> dict:
+    """Cache the ablation like `run_cached`, keyed on a signature that also tracks the exploits
+    snapshot, so a refreshed exploit catalogue forces a recompute."""
+    import json
+
+    sig = _inputs_signature(settings, horizon, with_exploit=True)
+    path = _cache_path(settings, horizon, name="epss_exploit_ablation")
+    if path.exists():
+        try:
+            cached = json.loads(path.read_text(encoding="utf-8"))
+            if cached.get("inputs_signature") == sig:
+                cached["served_from_cache"] = True
+                return cached
+        except (ValueError, OSError):
+            pass
+    out = run_exploit_ablation(settings, horizon=horizon)
+    out["inputs_signature"] = sig
+    out["served_from_cache"] = False
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(out, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+    return out
 
 
 def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_ratio: int = 40,

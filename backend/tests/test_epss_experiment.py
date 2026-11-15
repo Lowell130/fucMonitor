@@ -42,6 +42,16 @@ def _nvd(settings, rows: list[tuple]):
     _write(SOURCES["nvd"].curated_path(settings, date(2026, 11, 14)), t)
 
 
+def _exploits(settings, rows: list[tuple]):
+    """rows: (cve_id, provider, provider_date)."""
+    t = pa.table({
+        "cve_id": [r[0] for r in rows],
+        "provider": [r[1] for r in rows],
+        "provider_date": [r[2] for r in rows],
+    })
+    _write(SOURCES["exploits"].curated_path(settings, date(2026, 11, 14)), t)
+
+
 def _con(settings):
     import duckdb
 
@@ -255,3 +265,36 @@ def test_run_smoke_and_no_leakage_invariants(settings):
     assert "age" in scored["model"].lower()
     assert scored["population"] >= len(scored["items"]) >= 1
     assert all(it["age_days"] >= 0 for it in scored["items"])
+
+
+def test_exploit_ablation_point_in_time_and_structure(settings):
+    """The ablation adds a point-in-time 'public exploit by D' feature and keeps the machinery."""
+    months = [date(2024, 1, 2) + timedelta(days=31 * i) for i in range(20)]
+    priors = [m - timedelta(days=28) for m in months]
+    cves = [f"CVE-X{i:03d}" for i in range(300)]
+    for day in sorted(set(months + priors)):
+        _epss_snapshot(settings, day, [(c, 0.01 + (i % 50) / 100.0) for i, c in enumerate(cves)])
+    kev_rows = [(cves[j * 5 + k], day + timedelta(days=10)) for j, day in enumerate(months) for k in range(5)]
+    _kev(settings, kev_rows)
+    _nvd(settings, [(c, date(2023, 1, 1)) for c in cves])
+    # exploits: Exploit-DB with a date in 2024-06 for a block of CVEs; Nuclei has no date (ignored)
+    _exploits(settings, [(cves[i], "exploitdb", date(2024, 6, 1)) for i in range(50)]
+                        + [(cves[i], "nuclei", None) for i in range(50, 60)])
+
+    out = ex.run_exploit_ablation(settings, horizon=30, neg_ratio=20, min_train_pos=1,
+                                  start=date(2024, 1, 1))
+    assert set(out["models"]) == set(ex._ABLATION_MODELS)
+    # exploit_only is a ranker with metrics; verdict mentions exploit availability
+    assert "roc_auc_within_date_mean" in out["models"]["exploit_only"]
+    assert "exploit" in out["verdict"].lower()
+    assert any("provider's own date" in lim for lim in out["limits"])
+
+    # point-in-time: before the exploit date no CVE is flagged; after it, the block is
+    import duckdb
+    con = duckdb.connect()
+    ex._lookup_tables(con, settings, with_exploit=True)
+    before = ex._assemble(con, settings, months[3], None, 30, with_exploit=True)   # 2024-04-04
+    after = ex._assemble(con, settings, months[8], None, 30, with_exploit=True)    # 2024-09-06
+    con.close()
+    assert before["x5"].sum() == 0            # exploit date 2024-06-01 is in the future here
+    assert after["x5"].sum() > 0              # and in the past here
