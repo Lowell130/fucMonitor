@@ -99,6 +99,25 @@ def _train_dates(evals: list[date], Dk: date, horizon: int) -> list[date]:
     return [Dj for Dj in evals if Dj < Dk and Dj + timedelta(days=horizon) <= Dk]
 
 
+def _fetch(con: duckdb.DuckDBPyConnection, sql: str) -> dict:
+    """Run a query and return columns as plain numpy arrays, without needing pandas.
+
+    DuckDB's fetchnumpy returns a masked array for a column that holds NULLs; we fill those
+    with NaN so callers can test them with np.isnan uniformly.
+    """
+    res = con.execute(sql).fetchnumpy()
+    out = {}
+    for name, arr in res.items():
+        if np.ma.isMaskedArray(arr):
+            try:
+                out[name] = arr.astype(float).filled(np.nan)
+            except (ValueError, TypeError):
+                out[name] = arr.filled(None)
+        else:
+            out[name] = np.asarray(arr)
+    return out
+
+
 def _assemble(con: duckdb.DuckDBPyConnection, settings: Settings, D: date,
               prior_file: str | None, horizon: int) -> dict:
     """Point-in-time feature arrays for every CVE in the population at D (float32, no strings)."""
@@ -123,20 +142,20 @@ def _assemble(con: duckdb.DuckDBPyConnection, settings: Settings, D: date,
           AND pub.published IS NOT NULL
           AND pub.published <= TIMESTAMP '{D} 23:59:59+00'
     """
-    df = con.execute(sql).df()
-    ep = np.clip(df["epss"].to_numpy(float), 1e-6, 1 - 1e-6)
-    pr = df["epss_prior"].to_numpy(float)
+    d = _fetch(con, sql)
+    ep = np.clip(d["epss"].astype(float), 1e-6, 1 - 1e-6)
+    pr = d["epss_prior"].astype(float)
     is_new = np.isnan(pr).astype(np.float32)
     trend = np.where(np.isnan(pr), 0.0, ep - np.clip(pr, 1e-6, 1 - 1e-6)).astype(np.float32)
-    age = np.clip(df["age"].to_numpy(float), 0, None)
+    age = np.clip(d["age"].astype(float), 0, None)
     return {
         "epss": ep.astype(np.float32),
         "x1": np.log(ep / (1 - ep)).astype(np.float32),
         "x2": trend,
         "x3": np.log1p(age).astype(np.float32),
         "isnew": is_new,
-        "y": df["y"].to_numpy(np.float32),
-        "d2k": df["d2k"].to_numpy(np.int32),
+        "y": d["y"].astype(np.float32),
+        "d2k": d["d2k"].astype(np.int32),
     }
 
 
@@ -551,7 +570,7 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
         prior = _prior_snapshot(all_dates, latest)
         prior_cte = (f"p AS (SELECT cve_id, epss AS epss_prior FROM read_parquet('{_epss_file(settings, prior)}'))"
                      if prior else "p AS (SELECT NULL::VARCHAR cve_id, NULL::DOUBLE epss_prior WHERE 1=0)")
-        cur = con.execute(f"""
+        cur = _fetch(con, f"""
             WITH e AS (SELECT cve_id, epss FROM read_parquet('{_epss_file(settings, latest)}')),
             {prior_cte}
             SELECT e.cve_id, e.epss, p.epss_prior,
@@ -559,7 +578,7 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
             FROM e LEFT JOIN p USING (cve_id) LEFT JOIN kev k USING (cve_id) LEFT JOIN pub USING (cve_id)
             WHERE (k.kev_date IS NULL OR k.kev_date > DATE '{latest}')
               AND pub.published IS NOT NULL AND pub.published <= TIMESTAMP '{latest} 23:59:59+00'
-        """).df()
+        """)
     finally:
         con.close()
 
@@ -570,17 +589,18 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
     cols = _FEATURE_COLS["epss_age"]  # EPSS + age only: age is the feature that carries the gain
     b = _fit_logit(np.column_stack([np.ones(len(Z))] + [Z[:, c] for c in cols]), Y, W)
 
-    ep = np.clip(cur["epss"].to_numpy(float), 1e-6, 1 - 1e-6)
-    pr = cur["epss_prior"].to_numpy(float)
+    cve_ids = cur["cve_id"]
+    ep = np.clip(cur["epss"].astype(float), 1e-6, 1 - 1e-6)
+    pr = cur["epss_prior"].astype(float)
     isnew = np.isnan(pr).astype(float)
     trend = np.where(np.isnan(pr), 0.0, ep - np.clip(pr, 1e-6, 1 - 1e-6))
-    age = np.clip(cur["age"].to_numpy(float), 0, None)
+    age = np.clip(cur["age"].astype(float), 0, None)
     Xc = np.column_stack([np.log(ep / (1 - ep)), trend, np.log1p(age), isnew])
     Zc = (Xc - mu) / sd
     Zd = np.column_stack([np.ones(len(Zc))] + [Zc[:, c] for c in cols])
     score = 1 / (1 + np.exp(-np.clip(Zd @ b, -30, 30)))
     order = np.argsort(-score)[:top]
-    items = [{"cve_id": cur["cve_id"].iloc[i], "score": round(float(score[i]), 5),
+    items = [{"cve_id": str(cve_ids[i]), "score": round(float(score[i]), 5),
               "epss": round(float(ep[i]), 5), "age_days": int(age[i])} for i in order]
     return {
         "as_of": str(latest),
