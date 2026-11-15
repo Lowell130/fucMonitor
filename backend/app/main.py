@@ -19,7 +19,7 @@ from .config import get_settings
 from .sources import SOURCES
 from .sources.news import load_feeds
 from . import maintenance
-from .analysis import backtest, epss_experiment, exploitation, priority
+from .analysis import backtest, exploitation, priority
 from .taxonomy import mapping
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -500,6 +500,10 @@ def epss_experiment_report(
     Experimental and separate: it never feeds the category forecast. The run is heavy, so the
     result is cached until the latest EPSS snapshot advances (first call can take minutes)."""
     try:
+        from .analysis import epss_experiment  # local import: numpy only needed here
+    except ImportError as exc:
+        raise HTTPException(503, f"experiment needs numpy; rebuild the image: {exc}") from exc
+    try:
         return epss_experiment.run_cached(get_settings(), horizon=horizon)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
@@ -512,6 +516,10 @@ def epss_experiment_scores(
 ) -> dict:
     """EXPERIMENTAL ranking of today's not-yet-listed CVEs by likely KEV listing within the
     horizon. Not a probability of real exploitation, and never fused into the forecast."""
+    try:
+        from .analysis import epss_experiment  # local import: numpy only needed here
+    except ImportError as exc:
+        raise HTTPException(503, f"experiment needs numpy; rebuild the image: {exc}") from exc
     try:
         return epss_experiment.score_current(get_settings(), horizon=horizon, top=top)
     except ValueError as exc:

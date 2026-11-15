@@ -6,3 +6,4 @@ pyarrow>=17
 apscheduler>=3.10,<4
 pydantic-settings>=2.4
 tzdata
+numpy>=1.26
