@@ -152,10 +152,18 @@ Precisione/richiamo a parità di allerte **per data di valutazione** (non al gio
 
 Esperimento **separato** (`epss-experiment --exploit-ablation`), come richiesto dal prompt:
 «aggiungi exploit pubblici solo con esperimenti separati che ne misurino il contributo», tenendo
-distinti **disponibilità di exploit**, attività di scansione e sfruttamento confermato. Feature
-point-in-time: «esiste un exploit pubblico (Exploit-DB o Metasploit) con data della fonte ≤ D».
-La data è quella della fonte — ricostruzione retrospettiva fedele, non cattura live; Nuclei è
-escluso perché privo di data, quindi la copertura è parziale.
+distinti **disponibilità di exploit**, attività di scansione e sfruttamento confermato. Feature:
+«esiste un exploit pubblico (Exploit-DB o Metasploit) con data della fonte ≤ D».
+
+**Limite temporale (importante): ricostruzione retrospettiva approssimata.** La `provider_date`
+indica quando l'*exploit* è apparso secondo la fonte, ma **non** garantisce che il *collegamento*
+exploit↔CVE fosse disponibile allora: il catalogo è stato raccolto ora (`first_seen` recente) e
+abbiamo solo la mappatura **corrente**, senza snapshot storici del legame. Un riferimento CVE può
+essere stato aggiunto a una voce Exploit-DB molto dopo la pubblicazione, quindi «ha un exploit
+entro D» può essere **ottimista**. Non è quindi un fatto point-in-time come EPSS-alla-data o
+l'ingresso in KEV, ma una ricostruzione approssimata. Poiché anche così non aggiunge nulla, il
+risultato negativo vale *a maggior ragione*. Nuclei è escluso perché privo di data (copertura
+parziale).
 
 | Modello | ROC-AUC entro-data | ROC-AUC pooled |
 | --- | --- | --- |
@@ -168,6 +176,23 @@ L'exploit **da solo** ordina debolmente e il suo segnale **cala negli anni** (20
 identico, guadagno non consistente fra gli anni; a 100 allerte/data gli stessi 55 veri positivi).
 Decisione: **non** aggiungere la feature exploit; EPSS+età resta il modello sperimentale. Restano
 da misurare, con lo stesso protocollo e come feature separate, scansioni e notizie.
+
+## 6-ter. Notizie: storico insufficiente oggi (documentato, valutazione futura preparata)
+
+Le notizie sono modellate sulla **prima osservazione** (`first_seen_at`) e **non sono recuperabili
+all'indietro**: i feed RSS restituiscono solo una finestra recente, quindi lo storico utile cresce
+solo in avanti dal giorno in cui è iniziata la raccolta. Allo stato: **~4 giorni** di storico
+(2026-11-12 → 2026-11-15, ~5 400 item), **zero** finestre di 30 giorni valutabili. Un confronto
+walk-forward credibile con EPSS+età è impossibile ora.
+
+Non viene eseguito alcun esperimento sulle notizie: sarebbe non credibile. È invece pronta una
+**sonda di prontezza** (`GET /api/v1/analysis/epss-experiment/news-readiness`,
+`epss_experiment.news_history_readiness`) che riporta quanto storico esiste e se è sufficiente
+(soglia: ~365 giorni di raccolta). Protocollo previsto quando sarà pronto: feature «la CVE è stata
+citata in una notizia raccolta entro D» (`first_seen_at ≤ D`), stesso walk-forward a finestre
+disgiunte e stesse metriche dell'ablation exploit, con exploit/scansioni/notizie tenute distinte, e
+un **periodo finale (gli ultimi mesi) tenuto fuori** da ogni scelta di feature o soglia, usato solo
+per il confronto finale. Fino ad allora EPSS+età resta invariato.
 
 ## 7. Cosa è stato integrato
 

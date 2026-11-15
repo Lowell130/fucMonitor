@@ -544,6 +544,18 @@ def epss_experiment_exploit_ablation(
         raise HTTPException(422, str(exc)) from exc
 
 
+@app.get("/api/v1/analysis/epss-experiment/news-readiness", tags=["analysis"])
+def epss_experiment_news_readiness(horizon: int = Query(30)) -> dict:
+    """Whether enough news history has accumulated to test 'CVE cited in news by D' against
+    EPSS+age. News is modelled by first observation and cannot be back-filled, so this is a probe
+    to watch over time, not an experiment yet."""
+    try:
+        from .analysis import epss_experiment  # local import: numpy only needed here
+    except ImportError as exc:
+        raise HTTPException(503, f"experiment needs numpy; rebuild the image: {exc}") from exc
+    return epss_experiment.news_history_readiness(get_settings(), horizon=horizon)
+
+
 @app.get("/api/v1/taxonomy", tags=["data"])
 def taxonomy() -> dict:
     return json.loads(TAXONOMY.read_text(encoding="utf-8"))

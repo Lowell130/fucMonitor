@@ -134,8 +134,10 @@ def _assemble(con: duckdb.DuckDBPyConnection, settings: Settings, D: date,
     """Point-in-time feature arrays for every CVE in the population at D (float32, no strings).
 
     `with_exploit` adds `x5` = a public exploit (Exploit-DB or Metasploit) was published by D per
-    the provider's own date. Like EPSS, that date is a faithful retrospective reconstruction from
-    provider metadata, not a live as-of capture; Nuclei carries no date and is left out.
+    the provider's own date. This is an APPROXIMATE retrospective reconstruction: the provider
+    date bounds when the exploit appeared, but the exploit-to-CVE linkage is the current one
+    (collected now, no historical snapshots), so it is not verifiable that the link existed at D.
+    Nuclei carries no date and is left out.
     """
     if prior_file:
         prior_cte = f"p AS (SELECT cve_id, epss AS epss_prior FROM read_parquet('{prior_file}'))"
@@ -381,8 +383,8 @@ def _budget(score, y, d2k, groups, fixed=None):
 
 
 # --- public entry points -----------------------------------------------------
-# Bumped whenever the experiment logic changes, so a cached result is not reused across versions.
-_EXPERIMENT_VERSION = "3"
+# Bumped whenever the experiment logic or report text changes, so a cached result is not reused.
+_EXPERIMENT_VERSION = "4"
 # Ranking models (produce a per-CVE score). base_rate is a non-ranking reference for Brier.
 RANKERS = ("raw_epss", "epss_platt", "epss_age", "epss_trend", "feat_model")
 MODELS = ("base_rate",) + RANKERS
@@ -757,9 +759,14 @@ def run_exploit_ablation(settings: Settings, horizon: int = 30, neg_ratio: int =
                            "source) and confirmed exploitation (KEV, the target) are kept separate. "
                            "This measures only whether a public exploit had been published by D.")
     rep["limits"] = rep["limits"] + [
-        "The exploit date is the provider's own date (Exploit-DB / Metasploit): a faithful "
-        "retrospective reconstruction, not a live as-of capture. Nuclei carries no date and is "
-        "excluded, so exploit coverage is partial.",
+        "APPROXIMATE reconstruction. The feature uses the provider's own date (Exploit-DB / "
+        "Metasploit) for when the exploit appeared, but the exploit-to-CVE LINKAGE comes from the "
+        "catalogue collected now (first_seen is recent); there are no historical snapshots of the "
+        "mapping, so we cannot verify that the exploit was already linked to this CVE at date D. A "
+        "CVE reference can be added to an exploit entry long after publication, so 'has_exploit by "
+        "D' may be optimistic. This is a retrospective reconstruction, not a point-in-time fact; "
+        "since even so it adds nothing over EPSS+age, the negative result holds a fortiori.",
+        "Nuclei carries no date and is excluded, so exploit coverage is partial.",
         "A public exploit existing is not confirmed exploitation and not a KEV listing; this only "
         "tests its value as a feature for anticipating the KEV listing.",
     ]
@@ -861,4 +868,59 @@ def score_current(settings: Settings, horizon: int = 30, top: int = 100, neg_rat
         "population": int(len(cve_ids)),
         "trained_on_test_dates": len(train),
         "items": items,
+    }
+
+
+# Minimum history (days) before a news feature can be tested walk-forward against EPSS+age.
+# A credible run needs training plus several disjoint horizon windows with KEV positives.
+_NEWS_MIN_SPAN_DAYS = 365
+
+
+def news_history_readiness(settings: Settings, horizon: int = 30) -> dict:
+    """Is the news history long enough to test 'CVE cited in news by D' against EPSS+age yet?
+
+    News is modelled by `first_seen_at` (when we first observed an item) and cannot be
+    back-filled: RSS feeds only return a recent window, so the usable history grows forward from
+    the day collection started. This reports how much exists and whether it is enough — a probe to
+    run over time, not an experiment. The protocol for when it is ready is documented in the
+    'note', including a final hold-out period kept out of any news-feature selection.
+    """
+    files = SOURCES["news"].curated_files(settings)
+    if not files:
+        return {"ready": False, "observed_days": 0, "span_days": 0,
+                "note": "no news collected yet; the harness accumulates it going forward."}
+    con = duckdb.connect()
+    try:
+        row = _fetch(con, f"""
+            SELECT count(*) AS items,
+                   count(DISTINCT CAST(first_seen_at AS DATE)) AS observed_days,
+                   min(CAST(first_seen_at AS DATE)) AS first_day,
+                   max(CAST(first_seen_at AS DATE)) AS last_day,
+                   count(*) FILTER (WHERE len(cve_ids) > 0) AS items_with_cve
+            FROM read_parquet({files!r})
+        """)
+    finally:
+        con.close()
+    first_day = row["first_day"][0]
+    last_day = row["last_day"][0]
+    span = int((last_day - first_day).astype("timedelta64[D]").astype(int)) if row["items"][0] else 0
+    ready = span >= _NEWS_MIN_SPAN_DAYS and int(row["observed_days"][0]) >= 300
+    return {
+        "ready": bool(ready),
+        "items": int(row["items"][0]),
+        "items_with_cve": int(row["items_with_cve"][0]),
+        "observed_days": int(row["observed_days"][0]),
+        "span_days": span,
+        "first_day": str(first_day),
+        "last_day": str(last_day),
+        "needed_span_days": _NEWS_MIN_SPAN_DAYS,
+        "note": (
+            "News modelled by first observation (first_seen_at); it is NOT back-fillable, so the "
+            f"usable history only grows forward. Needs about {_NEWS_MIN_SPAN_DAYS} days of "
+            "collection before a credible walk-forward against EPSS+age is possible. Planned "
+            "protocol when ready: feature = 'the CVE was cited in collected news by date D' "
+            "(first_seen_at <= D), same disjoint-window walk-forward and metrics as the exploit "
+            "ablation, exploit/scan/news kept distinct, and a final hold-out period (the most "
+            "recent months) reserved out of any news-feature or threshold selection and used only "
+            "for the final comparison. Until ready, keep EPSS+age unchanged."),
     }

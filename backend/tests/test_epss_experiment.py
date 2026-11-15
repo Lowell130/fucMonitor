@@ -267,6 +267,30 @@ def test_run_smoke_and_no_leakage_invariants(settings):
     assert all(it["age_days"] >= 0 for it in scored["items"])
 
 
+def _news(settings, rows):
+    """rows: (item_id, first_seen_date, [cve_ids])."""
+    t = pa.table({
+        "item_id": [r[0] for r in rows],
+        "first_seen_at": [datetime(r[1].year, r[1].month, r[1].day, tzinfo=timezone.utc) for r in rows],
+        "cve_ids": [r[2] for r in rows],
+    })
+    _write(SOURCES["news"].curated_path(settings, date(2026, 11, 15)), t)
+
+
+def test_news_readiness_reports_insufficient_short_history(settings):
+    # No news at all -> not ready, clear note.
+    r0 = ex.news_history_readiness(settings, horizon=30)
+    assert r0["ready"] is False and r0["observed_days"] == 0
+    # A few days of news -> still not ready (needs ~a year), but counts are reported.
+    _news(settings, [(f"n{i}", date(2026, 11, 12) + timedelta(days=i % 4), ["CVE-2026-0001"])
+                     for i in range(20)])
+    r1 = ex.news_history_readiness(settings, horizon=30)
+    assert r1["ready"] is False
+    assert r1["observed_days"] == 4 and r1["span_days"] <= 4
+    assert r1["items_with_cve"] == 20
+    assert "hold-out" in r1["note"]
+
+
 def test_exploit_ablation_point_in_time_and_structure(settings):
     """The ablation adds a point-in-time 'public exploit by D' feature and keeps the machinery."""
     months = [date(2024, 1, 2) + timedelta(days=31 * i) for i in range(20)]
