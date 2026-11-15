@@ -106,9 +106,17 @@ Prossimi passi, in ordine:
      `news-readiness`/`news_history_readiness` (soglia ~365 giorni) e protocollo futuro
      documentato (feature «CVE citata entro D», walk-forward a finestre disgiunte, periodo finale
      tenuto fuori dalla scelta delle feature). Lo storico cresce in avanti dalla raccolta.
-   - **scansioni — da fare**, soprattutto a livello di categoria, distinguendo esplicitamente
-     data osservata, disponibilità del dato e revisioni (DShield corregge i giorni recenti), con
-     la stessa cautela point-in-time.
+   - **scansioni — fatto, nessun beneficio misurabile.** Verifica dedicata a livello di categoria
+     (`scan-experiment`, endpoint `scan-forecast-experiment`): previsione attuale (recent_rate) vs
+     previsione + scansioni, walk-forward con β scelto solo sull'addestramento e **periodo finale
+     di hold-out** escluso dalla scelta; metriche su hold-out = errore dei conteggi (MAE/RMSE),
+     copertura degli intervalli, allerte catturate a parità di budget. Risultato (orizzonte 90,
+     hold-out 7 date, 582 eventi): β=0 già in addestramento → nessun miglioramento; le **scansioni
+     restano un flag**, non fuse nella previsione. Coerente con `signal_check`. Limite: lato
+     scansioni la valutazione è **retrospettiva e approssimata** — conserviamo solo il valore
+     corretto successivamente (niente prima-disponibilità né revisioni) e quasi tutto è backfillato
+     ~1 anno dopo. Preparata la verifica futura: `scans.py` ora registra il valore di prima
+     osservazione (`first_sources`/`first_seen_at`) in avanti, così un run futuro sarà verificabile.
 3. Notizie (contenuto app): raggruppamento multilingue e verifica a campione della qualità delle regole.
 4. Revisione manuale della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
 5. Aggregazione per categoria e pagina Previsioni.

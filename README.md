@@ -152,6 +152,13 @@ alla previsione, mai fusa con essa. Un controllo (`/api/v1/analysis/scan-signal-
 sulla storia reale se le impennate hanno anticipato lo sfruttamento, e si rifiuta di affermarlo
 senza numeri a sufficienza. È un segnale, non una prova.
 
+Una verifica dedicata (`/api/v1/analysis/scan-forecast-experiment`) chiede se *aggiungere* le
+scansioni alla previsione per categoria riduca l'errore dei conteggi, mantenga la copertura degli
+intervalli e catturi più allerte a parità di budget, su un periodo finale tenuto fuori dalla
+scelta dei parametri. Esito: nessun beneficio misurabile → le scansioni restano un flag. La
+valutazione lato scansioni è retrospettiva e approssimata (si conserva solo il valore corretto
+dopo); `scans.py` ora registra anche il valore di prima osservazione per una verifica futura.
+
 ## Notizie e avvisi
 
 Ogni ora il backend legge i feed RSS elencati in `backend/app/sources/feeds.json`: avvisi
