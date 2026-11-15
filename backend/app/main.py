@@ -410,6 +410,13 @@ def rebuild_categories() -> dict:
     return {"products": runner.refresh_categories(get_settings(), force=True) or 0}
 
 
+@app.get("/api/v1/categories/history", tags=["categories"])
+def categories_history(product: str | None = Query(None), limit: int = Query(200, ge=1, le=2000)) -> dict:
+    """Append-only audit of manual category assignments: every set and clear, newest first, so past
+    versions are preserved. Pass `product` to see one product's history."""
+    return {"items": state.product_category_history(get_settings().state_db, product, limit)}
+
+
 @app.get("/api/v1/analysis/rates", tags=["analysis"])
 def exploitation_rates(since_year: int | None = Query(None, ge=1999, le=2100)) -> dict:
     """Share of vulnerabilities exploited within 30, 90 and 365 days, per category.
@@ -554,6 +561,15 @@ def epss_experiment_exploit_ablation(
         return epss_experiment.run_exploit_ablation_cached(get_settings(), horizon=horizon)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+@app.get("/api/v1/health/collection", tags=["pipeline"])
+def collection_health() -> dict:
+    """Daily reliability check: is every source fresh, did the last runs succeed, is the prediction
+    log current? `ok` is false and `problems` lists what to look at when something is stale or failed."""
+    from . import health
+
+    return health.collection_report(get_settings())
 
 
 @app.post("/api/v1/analysis/predictions/snapshot", tags=["analysis"])

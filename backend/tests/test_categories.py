@@ -224,3 +224,16 @@ def test_coverage_works_when_the_catalogue_spans_several_files(catalogue, monkey
     coverage = queries.categories_coverage(settings)
     assert coverage["cves"] == 6 and coverage["cves_mapped"] == 4  # same answer, more files
     assert coverage["products"] == 5
+
+
+def test_manual_assignment_history_preserves_versions(settings):
+    from app import state
+    db = settings.state_db
+    state.set_product_category(db, "acme:gateway", "router_network_edge", note="first")
+    state.set_product_category(db, "acme:gateway", "vpn_remote_access", note="corrected")
+    state.clear_product_category(db, "acme:gateway")
+    hist = state.product_category_history(db, "acme:gateway")
+    # three recorded versions, newest first: clear, then the correction, then the first set
+    assert [h["action"] for h in hist] == ["clear", "set", "set"]
+    assert hist[1]["category"] == "vpn_remote_access" and hist[1]["prev_category"] == "router_network_edge"
+    assert hist[2]["category"] == "router_network_edge" and hist[2]["prev_category"] is None

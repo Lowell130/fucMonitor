@@ -47,6 +47,17 @@ CREATE TABLE IF NOT EXISTS product_category (
     decided_at TEXT NOT NULL
 );
 
+-- Append-only audit of every manual assignment change, so past versions are never lost.
+CREATE TABLE IF NOT EXISTS product_category_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    product     TEXT NOT NULL,
+    action      TEXT NOT NULL,          -- 'set' or 'clear'
+    category    TEXT,                   -- the new category for 'set', NULL for 'clear'
+    prev_category TEXT,                 -- what it was before this change, if anything
+    note        TEXT,
+    decided_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS kv (
     key        TEXT PRIMARY KEY,
     value      TEXT,
@@ -218,16 +229,46 @@ def count_product_categories(db_path: Path) -> int:
 
 
 def set_product_category(db_path: Path, product: str, category: str, note: str | None = None) -> None:
+    now = iso(utcnow())
     with connect(db_path) as conn:
+        prev = conn.execute("SELECT category FROM product_category WHERE product = ?", (product,)).fetchone()
+        prev_cat = prev["category"] if prev else None
         conn.execute(
             "INSERT INTO product_category (product, category, note, decided_at) VALUES (?, ?, ?, ?) "
             "ON CONFLICT(product) DO UPDATE SET category = excluded.category, note = excluded.note, "
             "decided_at = excluded.decided_at",
-            (product, category, note, iso(utcnow())),
+            (product, category, note, now),
+        )
+        conn.execute(
+            "INSERT INTO product_category_history (product, action, category, prev_category, note, decided_at) "
+            "VALUES (?, 'set', ?, ?, ?, ?)",
+            (product, category, prev_cat, note, now),
         )
 
 
 def clear_product_category(db_path: Path, product: str) -> bool:
-    """Drop a hand-made assignment so the product falls back to the rules."""
+    """Drop a hand-made assignment so the product falls back to the rules. The removed version is
+    kept in the history, so no assignment is ever lost."""
     with connect(db_path) as conn:
-        return conn.execute("DELETE FROM product_category WHERE product = ?", (product,)).rowcount > 0
+        prev = conn.execute("SELECT category FROM product_category WHERE product = ?", (product,)).fetchone()
+        removed = conn.execute("DELETE FROM product_category WHERE product = ?", (product,)).rowcount > 0
+        if removed:
+            conn.execute(
+                "INSERT INTO product_category_history (product, action, category, prev_category, note, decided_at) "
+                "VALUES (?, 'clear', NULL, ?, NULL, ?)",
+                (product, prev["category"] if prev else None, iso(utcnow())),
+            )
+        return removed
+
+
+def product_category_history(db_path: Path, product: str | None = None, limit: int = 200) -> list[dict]:
+    """Every recorded assignment change, newest first; optionally for one product."""
+    with connect(db_path) as conn:
+        if product:
+            rows = conn.execute(
+                "SELECT * FROM product_category_history WHERE product = ? ORDER BY id DESC LIMIT ?",
+                (product, limit)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM product_category_history ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [_row(r) for r in rows]

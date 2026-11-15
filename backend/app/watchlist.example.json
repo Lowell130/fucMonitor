@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "note": "Products/categories that matter to us, with an impact weight. This is about OUR environment, not a property of any CVE. It is NEVER fused into the exploitation-probability model: any priority view uses probability (measured) and impact (declared here) as two separate dimensions. Copy to watchlist.json and fill in to activate. See docs/IMPACT_SIZING.md.",
+  "impact_weights": {"low": 1, "medium": 2, "high": 4},
+  "categories": [
+    {"category_id": "vpn_remote_access", "impact": "high", "why": "example — perimeter access; replace with your own"}
+  ],
+  "products": [
+    {"product": "vendor:product", "impact": "high", "why": "example — replace with your own"}
+  ]
+}

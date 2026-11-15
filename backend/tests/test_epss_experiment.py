@@ -28,10 +28,10 @@ def _epss_snapshot(settings, day: date, rows: list[tuple]):
     _write(SOURCES["epss"].curated_path(settings, day), t)
 
 
-def _kev(settings, rows: list[tuple]):
-    """rows: (cve_id, date_added)."""
+def _kev(settings, rows: list[tuple], snapshot: date = date(2026, 11, 14)):
+    """rows: (cve_id, date_added). `snapshot` is the retrieval date (catalogue freshness)."""
     t = pa.table({"cve_id": [r[0] for r in rows], "date_added": [r[1] for r in rows]})
-    _write(SOURCES["kev"].curated_path(settings, date(2026, 11, 14)), t)
+    _write(SOURCES["kev"].curated_path(settings, snapshot), t)
 
 
 def _nvd(settings, rows: list[tuple]):
@@ -367,7 +367,7 @@ def test_prospective_log_snapshot_and_closed_window_scoring(settings):
     # window not closed yet -> pending, nothing scored
     sc = pl.score_prospective(settings, horizon=30)
     assert sc["pending_window_open"] >= 1 and sc["closed_scored"] == 0
-    assert sc["pooled_precision_at_k"] is None
+    assert sc["pooled_precision_at_k_all_windows"] is None
 
 
 def test_prospective_scoring_requires_closed_and_covered_window(settings):
@@ -375,9 +375,9 @@ def test_prospective_scoring_requires_closed_and_covered_window(settings):
     import json as _json
     from app.analysis import prediction_log as pl
 
-    # KEV data reaches to 2026-02-01 (latest date_added); a true entrant at 2026-01-15
-    _kev(settings, [("CVE-HIT-0001", date(2026, 1, 15)), ("CVE-OLD-0001", date(2025, 1, 1)),
-                    ("CVE-LATE-0003", date(2026, 2, 1))])
+    # Catalogue retrieved only through 2026-02-10 (snapshot date = freshness), a true entrant 01-15
+    _kev(settings, [("CVE-HIT-0001", date(2026, 1, 15)), ("CVE-OLD-0001", date(2025, 1, 1))],
+         snapshot=date(2026, 2, 10))
 
     def write_snap(issued, items):
         rec = {"kind": "cve_kev_ranking", "issued_at": issued,
@@ -395,6 +395,16 @@ def test_prospective_scoring_requires_closed_and_covered_window(settings):
     assert out["closed_scored"] == 1                      # only the covered window
     assert out["pending_data_not_covering_window"] == 1  # the uncovered one
     # model ranked the true KEV entrant first, EPSS ranked it second -> model precision@1 higher
-    pm = out["pooled_precision_at_k"]["model"][1]
-    pe = out["pooled_precision_at_k"]["epss"][1]
+    pm = out["pooled_precision_at_k_all_windows"]["model"][1]
+    pe = out["pooled_precision_at_k_all_windows"]["epss"][1]
     assert pm == 1.0 and pe == 0.0
+
+
+def test_collection_health_reports_staleness_and_problems(settings):
+    """With no data, every source is stale and problems are visible, not silent."""
+    from app import health
+    rep = health.collection_report(settings)
+    assert rep["ok"] is False
+    assert rep["problems"]                       # stale sources surfaced
+    assert {s["source"] for s in rep["sources"]} >= {"kev", "epss", "nvd", "scans"}
+    assert all("stale" in s for s in rep["sources"])
