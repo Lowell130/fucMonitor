@@ -233,23 +233,23 @@ def _train_matrix(data: dict, train_dates: list[date], neg_ratio: int, rng: np.r
 
 # --- metrics -----------------------------------------------------------------
 def _roc_auc(score: np.ndarray, y: np.ndarray) -> float:
-    """Rank-based AUC, tie-safe (average ranks). The trustworthy discrimination metric here."""
-    order = np.argsort(score, kind="mergesort")
-    ss = score[order]
-    ranks = np.empty(len(score))
-    i = 0
-    while i < len(score):
-        j = i
-        while j + 1 < len(score) and ss[j + 1] == ss[i]:
-            j += 1
-        ranks[i:j + 1] = (i + j) / 2.0 + 1
-        i = j + 1
-    rr = np.empty(len(score))
-    rr[order] = ranks
+    """Rank-based AUC with average ranks for ties (tie-safe), fully vectorised."""
+    n = len(score)
     npos = y.sum()
-    nneg = len(y) - npos
+    nneg = n - npos
     if npos == 0 or nneg == 0:
         return float("nan")
+    order = np.argsort(score)                 # ties grouped by equal value, order within irrelevant
+    s = score[order]
+    change = np.empty(n, dtype=bool)
+    change[0] = True
+    change[1:] = s[1:] != s[:-1]
+    starts = np.flatnonzero(change)           # first index of each equal-value group
+    ends = np.append(starts[1:], n)           # exclusive end of each group
+    avg_rank = (starts + ends - 1) / 2.0 + 1  # average 1-based rank within the group
+    group = np.cumsum(change) - 1
+    rr = np.empty(n)
+    rr[order] = avg_rank[group]
     return float((rr[y == 1].sum() - npos * (npos + 1) / 2) / (npos * nneg))
 
 
