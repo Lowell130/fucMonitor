@@ -410,6 +410,17 @@ def rebuild_categories() -> dict:
     return {"products": runner.refresh_categories(get_settings(), force=True) or 0}
 
 
+@app.get("/api/v1/categories/cves", tags=["categories"])
+def category_cves(
+    category: str = Query(..., description="technology category id"),
+    only_kev: bool = Query(False, description="keep only confirmed (KEV-listed) CVEs"),
+    limit: int = Query(100, ge=1, le=500),
+) -> dict:
+    """CVEs in one category, newest first — the evidence behind its numbers. Each CVE can be opened
+    in the Vulnerabilities page (full profile with original references)."""
+    return queries.category_cves(get_settings(), category, only_kev, limit)
+
+
 @app.get("/api/v1/categories/history", tags=["categories"])
 def categories_history(product: str | None = Query(None), limit: int = Query(200, ge=1, le=2000)) -> dict:
     """Append-only audit of manual category assignments: every set and clear, newest first, so past

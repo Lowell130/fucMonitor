@@ -237,3 +237,13 @@ def test_manual_assignment_history_preserves_versions(settings):
     assert [h["action"] for h in hist] == ["clear", "set", "set"]
     assert hist[1]["category"] == "vpn_remote_access" and hist[1]["prev_category"] == "router_network_edge"
     assert hist[2]["category"] == "router_network_edge" and hist[2]["prev_category"] is None
+
+
+def test_category_cves_lists_evidence(settings, client):
+    from app import runner, queries
+    # ingest kev+epss+nvd so the category pairs resolve, then query one category's CVEs
+    runner.run_source(settings, "kev", client=client)
+    runner.run_source(settings, "epss", client=client)
+    # category_cves returns a shape even with no NVD (no pairs) -> empty, no crash
+    out = queries.category_cves(settings, "vpn_remote_access", only_kev=True, limit=10)
+    assert out["category"] == "vpn_remote_access" and "items" in out and out["only_kev"] is True

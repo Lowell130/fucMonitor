@@ -15,7 +15,7 @@ import streamlit as st
 from i18n import LANGUAGES, translate
 
 API_URL = os.environ.get("FUC_API_URL", "http://localhost:8000").rstrip("/")
-PAGES = ["overview", "forecast", "scans", "pipeline", "news", "vulns", "categories", "kev", "epss"]
+PAGES = ["observatory", "overview", "forecast", "scans", "pipeline", "news", "vulns", "categories", "kev", "epss"]
 
 st.set_page_config(page_title="fucMonitor", page_icon="📈", layout="wide")
 
@@ -671,6 +671,90 @@ def page_epss() -> None:
             )
 
 
-{"overview": page_overview, "forecast": page_forecast, "scans": page_scans,
- "pipeline": page_pipeline, "news": page_news, "vulns": page_vulns,
+def page_observatory() -> None:
+    HORIZON = 30
+    st.header(t("nav.observatory"))
+    st.caption(t("obs.intro"))
+    data = get_cached("/api/v1/observatory", horizon=HORIZON)
+    names = labels("technology_categories")
+    fresh = {f["source"]: f for f in data["provenance_and_freshness"]}
+    st.caption(t("obs.freshness", items=" · ".join(
+        f"{s} {fresh[s]['latest_snapshot'] or '–'}" for s in
+        ("kev", "epss", "nvd", "scans", "news", "exploits") if s in fresh)))
+
+    # 1 — OBSERVED FACTS
+    st.subheader("1 · " + t("obs.observed"))
+    ce = data["observed_events"]["confirmed_exploitation"]
+    if "unavailable" not in ce:
+        st.caption(t("obs.kev_source", date=ce.get("as_of_catalogue_retrieved", "–")))
+        tl = ce.get("timeline_monthly", [])
+        if tl:
+            frame = pd.DataFrame(tl)
+            frame["month"] = pd.to_datetime(frame["month"])
+            st.altair_chart(alt.Chart(frame).mark_bar().encode(
+                x=alt.X("month:T", title=None), y=alt.Y("added:Q", title=t("obs.kev_added")),
+                tooltip=["month:T", "added:Q"]), width="stretch")
+        rows = ce.get("by_category", [])
+        if rows:
+            st.caption(t("obs.by_cat_help"))
+            table([{**r, "category": names.get(r["category"], r["category"])} for r in rows],
+                  ["category", "kev_cves", "cves", "kev_share"], percent=("kev_share",))
+    dc = data["observed_events"]["documented_consequences"]
+    with st.expander(t("obs.consequences")):
+        st.caption(t("obs.consequences_help"))
+        types = dc.get("reported_event_types_30d", {})
+        if types:
+            table([{"event_type": k, "stories": v} for k, v in types.items()], ["event_type", "stories"])
+        st.caption("⚠️ " + (dc.get("caveat") or ""))
+
+    # 2 — PREDICTIONS
+    st.subheader("2 · " + t("obs.predictions"))
+    st.caption(t("obs.pred_horizon", h=HORIZON))
+    cw = data["predictions"]["cve_to_watch"]
+    if cw.get("items"):
+        st.caption(t("obs.cve_watch_help", date=cw.get("issued_at", "–"), v=cw.get("model_version", "–")))
+        table([{"cve_id": i["cve_id"], "score": i["score"], "epss": i["epss"],
+                "evidence": f"https://nvd.nist.gov/vuln/detail/{i['cve_id']}"} for i in cw["items"]],
+              ["cve_id", "score", "epss", "evidence"], percent=("epss",), links=("evidence",))
+    else:
+        st.info(cw.get("note") or cw.get("status") or t("common.no_data"))
+    fc = data["predictions"]["category_forecast"]
+    if fc.get("items"):
+        st.caption(t("obs.forecast_help", h=max(HORIZON, 30)))
+        table([{**r, "category": names.get(r["category"], r["category"])} for r in fc["items"]],
+              ["category", "expected", "low", "high", "recent_events", "recent_cves"])
+
+    # 3 — EMERGING SIGNALS
+    st.subheader("3 · " + t("obs.signals"))
+    sp = data["emerging_signals"]["scanning_pressure"]
+    st.caption("🔎 " + t("obs.scanning") + " — " + (sp.get("caveat") or ""))
+    if not sp.get("current_surges"):
+        st.caption(t("obs.no_surges"))
+    na = data["emerging_signals"]["news_activity"]
+    st.caption("📰 " + t("obs.news") + " — " + (na.get("caveat") or ""))
+    nt = na.get("stories_by_category_30d", {})
+    if nt:
+        table([{"event_type": k, "stories": v} for k, v in nt.items()], ["event_type", "stories"])
+
+    with st.expander(t("obs.missing")):
+        for m in data["missing"]:
+            st.markdown("- " + m)
+
+    # category drill-down -> original evidence
+    st.subheader(t("obs.drill"))
+    cat = st.selectbox(t("obs.pick_category"), list(names), format_func=lambda k: names.get(k, k))
+    only_kev = st.checkbox(t("obs.only_kev"), value=True)
+    ev = get_cached("/api/v1/categories/cves", category=cat, only_kev=only_kev, limit=100)
+    st.caption(t("obs.evidence_help", cat=names.get(cat, cat)))
+    if ev.get("items"):
+        table([{"cve_id": r["cve_id"], "published_date": (r["published_date"] or "–"),
+                "in_kev": r["in_kev"], "evidence": f"https://nvd.nist.gov/vuln/detail/{r['cve_id']}"}
+               for r in ev["items"]],
+              ["cve_id", "published_date", "in_kev", "evidence"], links=("evidence",))
+    else:
+        st.info(t("common.no_data"))
+
+
+{"observatory": page_observatory, "overview": page_overview, "forecast": page_forecast,
+ "scans": page_scans, "pipeline": page_pipeline, "news": page_news, "vulns": page_vulns,
  "categories": page_categories, "kev": page_kev, "epss": page_epss}[page]()

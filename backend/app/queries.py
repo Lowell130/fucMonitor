@@ -538,6 +538,25 @@ def categories_summary(settings: Settings, since_year: int | None = None) -> dic
     return {"items": items}
 
 
+def category_cves(settings: Settings, category: str, only_kev: bool = False, limit: int = 100) -> dict:
+    """CVEs in one technology category, newest first — the evidence behind a category's numbers.
+    `only_kev` keeps just the confirmed (KEV-listed) ones. Each CVE can be traced to its source."""
+    pairs = _category_pairs(settings)
+    if not pairs:
+        return {"category": category, "only_kev": only_kev, "items": []}
+    sql, params = pairs
+    where = "WHERE category = ?"
+    params = params + [category]
+    if only_kev:
+        where += " AND in_kev"
+    items = _rows(
+        f"""SELECT DISTINCT cve_id, published_date, in_kev FROM {sql} {where}
+            ORDER BY published_date DESC NULLS LAST, cve_id DESC LIMIT ?""",
+        params + [limit],
+    )
+    return {"category": category, "only_kev": only_kev, "count": len(items), "items": items}
+
+
 def category_products(
     settings: Settings,
     category: str | None = None,
