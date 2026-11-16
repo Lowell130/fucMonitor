@@ -443,3 +443,19 @@ def test_watchlist_band_logic_distinguishes_unknown_from_low_and_not_used():
     assert w._band("unknown")[0] == "needs_classification"
     assert w._band("not_used")[0] == "set_aside"
     assert w._band("low")[0] == "priority_3_low_impact"
+
+
+def test_observatory_overview_keeps_sections_separate(settings):
+    """The overview composes existing data into separate observed/prediction/signal sections with
+    provenance, freshness and an explicit 'missing' list, even when data is absent."""
+    from app import observatory
+    ov = observatory.overview(settings, horizon=30)
+    assert set(ov) >= {"observed_events", "predictions", "emerging_signals",
+                       "provenance_and_freshness", "missing"}
+    # the three kinds are distinct top-level blocks, not merged
+    assert ov["observed_events"]["kind"].startswith("confirmed")
+    assert "NOT consequences" in ov["predictions"]["kind"]
+    assert "flags" in ov["emerging_signals"]["kind"]
+    # consequences are shown separately and not inferred from scores/scans/articles
+    assert any("severity" in m or "consequences" in m for m in ov["missing"])
+    assert {f["source"] for f in ov["provenance_and_freshness"]} >= {"kev", "epss", "scans", "news"}

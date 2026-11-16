@@ -594,6 +594,16 @@ def watchlist_alerts(
         raise HTTPException(422, str(exc)) from exc
 
 
+@app.get("/api/v1/observatory", tags=["data"])
+def observatory_overview(horizon: int = Query(30, ge=7, le=90)) -> dict:
+    """Global overview with observed facts, predictions and emerging signals kept separate, each
+    with provenance and freshness, plus an explicit list of what is missing. Composes existing data
+    only; no fusion, no inferred impact from scores/scanning/article counts."""
+    from . import observatory
+
+    return observatory.overview(get_settings(), horizon=horizon)
+
+
 @app.get("/api/v1/health/collection", tags=["pipeline"])
 def collection_health() -> dict:
     """Daily reliability check: is every source fresh, did the last runs succeed, is the prediction
