@@ -573,16 +573,23 @@ def watchlist_config() -> dict:
 
 
 @app.get("/api/v1/analysis/watchlist/alerts", tags=["analysis"])
-def watchlist_alerts(horizon: int = Query(30, ge=7, le=90), top: int = Query(100, ge=1, le=1000)) -> dict:
-    """Experimental CVE alerts re-ranked by probability x impact using your watchlist. Probability
-    (measured) and impact (declared) stay separate; the probability model is untouched. Inactive
-    until data/watchlist.json exists."""
+def watchlist_alerts(
+    horizon: int = Query(30, ge=7, le=90),
+    top: int = Query(100, ge=1, le=1000),
+    bands: str | None = Query(None, description="comma list, e.g. priority_1_high_impact,needs_classification"),
+    exposure: str | None = Query(None, description="internet | internal | unknown"),
+) -> dict:
+    """OPTIONAL overlay: group the experimental alerts into explainable priority bands using your
+    watchlist. Experimental score (probability of KEV listing — not of a compromise of your
+    environment), impact and exposure stay SEPARATE, never multiplied. The probability model and
+    the prospective comparison are untouched. Inactive until data/watchlist.json exists."""
     try:
         from . import watchlist
     except ImportError as exc:
         raise HTTPException(503, f"needs numpy; rebuild the image: {exc}") from exc
     try:
-        return watchlist.impact_alerts(get_settings(), horizon=horizon, top=top)
+        return watchlist.prioritized_alerts(get_settings(), horizon=horizon, top=top,
+                                            bands=bands, exposure=exposure)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 

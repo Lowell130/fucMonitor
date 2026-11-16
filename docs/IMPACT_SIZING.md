@@ -3,6 +3,14 @@
 Documento di preparazione. **Prevedere lo sfruttamento** di una vulnerabilità e **stimarne le
 conseguenze** sono due problemi distinti e vanno tenuti separati.
 
+L'overlay della watchlist è una **personalizzazione opzionale**, separata dall'osservatorio
+globale: non cambia il punteggio sperimentale né il modello, e il punteggio prevede l'**ingresso
+nel catalogo KEV**, non la compromissione del tuo ambiente. Non si calcola «probabilità × impatto»:
+punteggio, impatto ed esposizione restano **tre dimensioni distinte**, e le allerte si raggruppano
+in **fasce di priorità spiegabili**. Ciò che **non dichiari** è trattato come **sconosciuto**
+(«da classificare»), **mai** come basso impatto; «**non lo uso**» (`not_used`) è un'esclusione
+esplicita, diversa da «non so».
+
 ## Due problemi, due dimensioni
 
 1. **Probabilità/tempistica di sfruttamento** — ciò che il progetto misura ora: quanto è probabile,
@@ -12,40 +20,51 @@ conseguenze** sono due problemi distinti e vanno tenuti separati.
    colpito: dipende da cosa usi, da quanto è esposto e da cosa protegge. È un giudizio sul tuo
    ambiente, non una proprietà della CVE.
 
-Le due dimensioni **non si moltiplicano alla cieca** né si fondono nel modello di probabilità. Una
-priorità operativa, se la vorrai, sarà un **overlay esplicito e separato**: probabilità (misurata) ×
-impatto (dichiarato da te), mostrato accanto alla probabilità, mai confuso con essa — come le
-scansioni restano un flag accanto alla previsione.
+Le due dimensioni **non si moltiplicano** né si fondono in un unico numero. L'overlay le tiene
+distinte e aggiunge una terza colonna, l'**esposizione**: raggruppa le allerte in **fasce di
+priorità spiegabili**, mostrando sempre punteggio, impatto ed esposizione separati.
 
 ## Cosa serve da te
 
-Quali **prodotti, servizi e categorie tecnologiche** ti interessano, e con quale peso d'impatto. È
-informazione sul tuo ambiente: il sistema non può inventarla. La si dichiara in una *watchlist*.
+Quali **categorie tecnologiche e prodotti** contano nel tuo ambiente, con tre informazioni per
+ciascuno:
 
-## Watchlist (scaffold, in attesa delle tue priorità)
+- **impatto** di un fermo/compromissione: `high` / `medium` / `low` / `not_used` (non lo uso);
+- **esposizione**: `internet` (raggiungibile dall'esterno) o `internal`;
+- facoltativo: *perché* (una riga).
 
-File di esempio: `backend/app/watchlist.example.json`. Vuoto di contenuto, con lo schema pronto:
+«**Non lo uso**» (`not_used`) è un'esclusione esplicita. Ciò che **non elenchi** è **sconosciuto**,
+non basso impatto: finisce nella fascia «da classificare». È informazione sul tuo ambiente, il
+sistema non può inventarla.
+
+## Watchlist (schema)
+
+File di esempio: `backend/app/watchlist.example.json`. Copialo in `data/watchlist.json` e compilalo:
 
 ```json
 {
-  "version": 1,
-  "note": "Prodotti/categorie che contano per noi, con un peso d'impatto. Non fuso nel modello.",
-  "impact_weights": {"low": 1, "medium": 2, "high": 4},
+  "version": 2,
   "categories": [
-    {"category_id": "vpn_remote_access", "impact": "high", "why": "accesso perimetrale"}
+    {"category_id": "vpn_remote_access", "impact": "high", "exposure": "internet", "why": "accesso perimetrale"},
+    {"category_id": "web_cms", "impact": "not_used", "why": "nessun CMS pubblico"}
   ],
   "products": [
-    {"product": "vendor:product", "impact": "high", "why": "esempio; da sostituire"}
+    {"product": "vendor:product", "impact": "high", "exposure": "internet", "why": "da sostituire"}
   ]
 }
 ```
 
-Quando la compilerai (copiandolo in `watchlist.json`), potremo:
+## Fasce di priorità (spiegabili, nessuna aritmetica di fusione)
 
-- ordinare le allerte sperimentali anche per impatto, **in una vista separata ed etichettata**;
-- riportare, accanto a ogni categoria, probabilità e peso d'impatto **distinti**, senza un unico
-  numero che li mescoli.
+`GET /api/v1/analysis/watchlist/alerts` raggruppa le allerte così (ordine: fascia, poi esposizione
+internet prima, poi punteggio sperimentale — tre chiavi in sequenza, non un prodotto):
 
-Fino ad allora non c'è alcuna stima d'impatto attiva: il sistema continua a misurare solo la
-probabilità/tempistica di ingresso in KEV. La previsione di eventi catastrofici (gravità reale delle
-conseguenze) resta un obiettivo successivo e separato.
+- `priority_1_high_impact` / `priority_2_medium_impact` / `priority_3_low_impact`: la CVE tocca una
+  categoria che hai marcato ad alto/medio/basso impatto;
+- `needs_classification`: impatto **non dichiarato = sconosciuto**, da classificare (non basso);
+- `set_aside`: tutte le categorie colpite sono `not_used`.
+
+Filtri: `?bands=...` ed `?exposure=internet|internal`. Il punteggio sperimentale resta la
+probabilità di **ingresso in KEV**, non di compromissione del tuo ambiente, e il modello non viene
+toccato. La previsione della gravità reale delle conseguenze resta un obiettivo successivo e
+separato.

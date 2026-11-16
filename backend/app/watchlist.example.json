@@ -1,11 +1,11 @@
 {
-  "version": 1,
-  "note": "Products/categories that matter to us, with an impact weight. This is about OUR environment, not a property of any CVE. It is NEVER fused into the exploitation-probability model: any priority view uses probability (measured) and impact (declared here) as two separate dimensions. Copy to watchlist.json and fill in to activate. See docs/IMPACT_SIZING.md.",
-  "impact_weights": {"low": 1, "medium": 2, "high": 4},
+  "version": 2,
+  "note": "OPTIONAL personalization, separate from the global observatory. It never changes the experimental score or the model. The score predicts ENTRY INTO THE KEV CATALOGUE, not a compromise of your environment. Impact, exposure and the score are kept as THREE separate dimensions and never multiplied: alerts are grouped into explainable priority bands. 'impact': high|medium|low|not_used. 'not_used' means the category is not in your environment (set aside). Anything you do NOT list is treated as UNKNOWN (needs classification), never as low impact. 'exposure': internet|internal; omit if unknown. Copy to data/watchlist.json and fill in. See docs/IMPACT_SIZING.md.",
   "categories": [
-    {"category_id": "vpn_remote_access", "impact": "high", "why": "example — perimeter access; replace with your own"}
+    {"category_id": "vpn_remote_access", "impact": "high", "exposure": "internet", "why": "example — perimeter access; replace with your own"},
+    {"category_id": "web_cms", "impact": "not_used", "why": "example — we run no public CMS"}
   ],
   "products": [
-    {"product": "vendor:product", "impact": "high", "why": "example — replace with your own"}
+    {"product": "vendor:product", "impact": "high", "exposure": "internet", "why": "example — replace with your own"}
   ]
 }

@@ -410,23 +410,36 @@ def test_collection_health_reports_staleness_and_problems(settings):
     assert all("stale" in s for s in rep["sources"])
 
 
-def test_watchlist_loads_validates_and_weights(settings):
+def test_watchlist_validation_and_unknown_vs_not_used(settings):
+    from pathlib import Path
     from app import watchlist
-    # absent -> inactive, with a helpful note
+    # absent -> inactive (optional), with a helpful note
     wl0 = watchlist.load(settings)
     assert wl0["active"] is False and "watchlist.json" in wl0["note"]
-    # write one valid category and one unknown id
-    (pathlib_Path := __import__("pathlib").Path)(settings.data_dir).mkdir(parents=True, exist_ok=True)
-    (pathlib_Path(settings.data_dir) / "watchlist.json").write_text(__import__("json").dumps({
-        "impact_weights": {"low": 1, "medium": 2, "high": 4},
-        "categories": [{"category_id": "vpn_remote_access", "impact": "high"},
+    Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
+    (Path(settings.data_dir) / "watchlist.json").write_text(json.dumps({
+        "categories": [{"category_id": "vpn_remote_access", "impact": "high", "exposure": "internet"},
+                       {"category_id": "web_cms", "impact": "not_used"},
                        {"category_id": "not_a_real_category", "impact": "low"}],
-        "products": [{"product": "acme:gw", "impact": "medium"}],
     }))
     wl = watchlist.load(settings)
     assert wl["active"] is True
-    assert wl["categories"]["vpn_remote_access"]["weight"] == 4.0
-    assert "not_a_real_category" in wl["unknown_category_ids"]   # unknown surfaced, not silently kept
-    assert wl["products"]["acme:gw"]["weight"] == 2.0
-    assert watchlist.category_weight(wl, "vpn_remote_access") == 4.0
-    assert watchlist.category_weight(wl, "web_cms") == 0.0
+    assert wl["categories"]["vpn_remote_access"]["impact"] == "high"
+    assert wl["categories"]["vpn_remote_access"]["exposure"] == "internet"
+    assert wl["categories"]["web_cms"]["impact"] == "not_used"          # explicitly excluded
+    assert "not_a_real_category" in wl["unknown_category_ids"]           # surfaced, not kept
+
+
+def test_watchlist_band_logic_distinguishes_unknown_from_low_and_not_used():
+    from app import watchlist as w
+    # the strongest declared impact wins
+    assert w._combine_impact(["low", "high", "unknown"]) == "high"
+    # undeclared/unknown is UNKNOWN, never low
+    assert w._combine_impact(["unknown"]) == "unknown"
+    assert w._combine_impact([]) == "unknown"
+    # only all-not_used is set aside; not_used + unknown stays unknown (could still matter)
+    assert w._combine_impact(["not_used"]) == "not_used"
+    assert w._combine_impact(["not_used", "unknown"]) == "unknown"
+    assert w._band("unknown")[0] == "needs_classification"
+    assert w._band("not_used")[0] == "set_aside"
+    assert w._band("low")[0] == "priority_3_low_impact"
