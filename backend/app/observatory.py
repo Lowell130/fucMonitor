@@ -76,18 +76,26 @@ def overview(settings: Settings, horizon: int = 30) -> dict:
 
     # --- PREDICTIONS -----------------------------------------------------------------------
     def cve_to_watch():
-        try:
-            from .analysis import epss_experiment as ex
-        except ImportError as exc:
-            return {"unavailable": f"needs numpy: {exc}"}
-        pred = ex.score_current(settings, horizon=horizon, top=20)
-        return {
-            "source": "experimental model (EPSS + CVE age), separate from the global ranking",
-            "means": "probability of ENTRY INTO KEV within the horizon — NOT exploitation in the "
-                     "wild and NOT a consequence",
-            "as_of": str(epss_as_of), "horizon_days": horizon,
-            "items": [{"cve_id": i["cve_id"], "score": i["score"], "epss": i["epss"]} for i in pred["items"][:20]],
-        }
+        # Reuse the latest FROZEN daily snapshot from the prospective log instead of recomputing:
+        # it is fast and keeps the overview consistent with what is actually being evaluated.
+        from .analysis import prediction_log as pl
+
+        snaps = pl._load_snapshots(settings, horizon)
+        if snaps:
+            latest = snaps[-1]
+            items = sorted(latest.get("items", []), key=lambda it: -it.get("model_score", 0.0))[:20]
+            return {
+                "source": "experimental model (EPSS + CVE age), separate from the global ranking",
+                "means": "probability of ENTRY INTO KEV within the horizon — NOT exploitation in the "
+                         "wild and NOT a consequence",
+                "issued_at": latest.get("issued_at"), "model_version": latest.get("model_version"),
+                "horizon_days": horizon, "from": "frozen daily snapshot (prospective log)",
+                "items": [{"cve_id": it["cve_id"], "score": it.get("model_score"), "epss": it.get("epss")}
+                          for it in items],
+            }
+        return {"status": "no frozen snapshot yet",
+                "note": "the daily prediction snapshot accumulates the frozen ranking; see "
+                        "predictions/snapshot. Not recomputed live here to keep the overview fast."}
 
     def category_forecast():
         fc = exploitation.forecast(settings, horizon=max(horizon, 30))
