@@ -396,6 +396,11 @@ def test_attention_trend_excludes_per_cve_feeds(settings, tmp_path, monkeypatch)
     assert att_total >= press_total
     assert any(r["key"] == "ransomware" for r in press["items"])  # editorial story is press
 
+    # the sample can target the free-text items by dropping per-CVE feeds
+    targeted = queries.news_quality(settings, window_days=365, sample=10, sample_exclude_per_cve=True)
+    assert targeted["sample"]["excludes_per_cve_feeds"] is True
+    assert all(i["feed_id"] != "msrc_update_guide" for i in targeted["sample"]["items"])
+
     q = queries.news_quality(settings, window_days=365, sample=0)
     assert q["streams"]["technical_advisories"]["stories"] == 2  # the two MSRC advisories
     # attention (all except per-CVE) keeps official non-per-CVE advisories; here MSRC is the only

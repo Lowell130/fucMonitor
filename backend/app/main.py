@@ -333,11 +333,14 @@ def news_quality(
     window_days: int = Query(30, ge=1, le=365),
     sample: int = Query(40, ge=0, le=200),
     seed: int = Query(1),
+    sample_exclude_per_cve: bool = Query(False),
 ) -> dict:
-    """Quality control for the news labels: three distinct counts (articles / stories /
-    official-source / incident), within-language duplication, collection gaps, and a
-    reproducible seeded sample for human review. Read-only; nothing here feeds the model."""
-    return queries.news_quality(get_settings(), window_days=window_days, sample=sample, seed=seed)
+    """Quality control for the news labels: three distinct lenses (technical / editorial / incident),
+    an attention count that excludes per-CVE feeds, collection gaps split into failures vs quiet
+    days, and a reproducible seeded sample for human review (sample_exclude_per_cve targets the
+    free-text items where the rules actually struggle). Read-only; nothing here feeds the model."""
+    return queries.news_quality(get_settings(), window_days=window_days, sample=sample, seed=seed,
+                                sample_exclude_per_cve=sample_exclude_per_cve)
 
 
 @app.get("/api/v1/news/feeds", tags=["pipeline"])

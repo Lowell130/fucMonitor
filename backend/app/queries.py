@@ -316,7 +316,8 @@ def _news_run_days(settings: Settings, window_days: int) -> tuple[dict, set]:
     return failed, ran
 
 
-def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, seed: int = 1) -> dict:
+def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, seed: int = 1,
+                 sample_exclude_per_cve: bool = False) -> dict:
     """Quality control for the news labels, read-only. Nothing here feeds the model.
 
     Keeps the advisories whole but splits them into three lenses that must not be conflated:
@@ -437,12 +438,15 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
             d = date.fromordinal(d.toordinal() + 1)
     collection_failures = [{"day": k, "failed_runs": v} for k, v in sorted(failed_days.items())]
 
-    # Reproducible sample for human QA: deterministic order keyed by (item_id, seed).
+    # Reproducible sample for human QA: deterministic order keyed by (item_id, seed). The sample can
+    # optionally drop per-CVE feeds: their labels are near-trivial, so a volume-weighted sample is
+    # dominated by them and under-tests the free-text items where the rules actually struggle.
+    sample_where = wsql + (f" AND feed_id NOT IN {per_cve_sql}" if sample_exclude_per_cve else "")
     sample_rows = _rows(
         f"""SELECT item_id, feed_id, source_kind, language, title, summary, link, cve_ids,
                    event_type, exploitation_signal, claim_status, target_sectors,
                    story_id, story_feeds
-            FROM {sql} WHERE {wsql}
+            FROM {sql} WHERE {sample_where}
             ORDER BY hash(item_id || ?) LIMIT ?""",
         params + [window_days, str(seed), sample],
     )
@@ -505,6 +509,7 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
         "sample": {
             "seed": seed,
             "size": len(sample_rows),
+            "excludes_per_cve_feeds": bool(sample_exclude_per_cve),
             "reviewed": False,
             "items": sample_rows,
         },
