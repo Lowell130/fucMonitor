@@ -306,5 +306,22 @@
   "obs.drill": "Explore a category → original evidence",
   "obs.pick_category": "Category",
   "obs.only_kev": "Only confirmed (KEV) CVEs",
-  "obs.evidence_help": "CVEs in {cat}, newest first. Open 'Evidence' for the original record (NVD); the Vulnerabilities page has the full profile with references."
+  "obs.evidence_help": "CVEs in {cat}, newest first. Open 'Evidence' for the original record (NVD); the Vulnerabilities page has the full profile with references.",
+  "col.feed_id": "Feed id",
+  "col.source_kind": "Source",
+  "newsq.title": "Label quality (QA)",
+  "newsq.intro": "A read-only check of the news labels. Articles, stories and incident reports are kept as three distinct counts; news is reported information, never a verified-incident count.",
+  "newsq.window": "Window (days)",
+  "newsq.articles": "Articles",
+  "newsq.stories": "Stories",
+  "newsq.official": "From official source",
+  "newsq.incidents": "Incident reports",
+  "newsq.counts_help": "Articles per story: {ratio}. 'Stories' groups duplicates within one language only.",
+  "newsq.dup": "**Duplication:** {n} stories reported by more than one feed ({share} of stories).",
+  "newsq.cross_language": "Cross-language:",
+  "newsq.gaps": "Collection gaps — {silent} silent feeds, {zero} days with no items",
+  "newsq.zero_days": "Days with no stored items:",
+  "newsq.no_gaps": "No silent feeds or empty days in this window.",
+  "newsq.sample": "Review sample — {n} items (seed {seed})",
+  "newsq.sample_help": "A reproducible sample for checking label errors and duplicates by hand. Same seed, same sample."
 }

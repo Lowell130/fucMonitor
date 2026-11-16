@@ -11,6 +11,7 @@ from .config import Settings
 from .enrich import news as news_enrich
 from .taxonomy import mapping
 from .sources import SOURCES
+from .sources import news as news_src
 
 
 def _file(settings: Settings, source: str, snapshot: date) -> str:
@@ -249,6 +250,146 @@ def news_daily(settings: Settings) -> dict:
         [files],
     )
     return {"items": items}
+
+
+# Event types that describe an incident (something happened), as opposed to an advisory or
+# a disclosure. Used only to count how many *reported* incidents there are; see the honest
+# note in the return value: these are reports, never independently verified incidents.
+_INCIDENT_EVENTS = (
+    "vulnerability_exploitation",
+    "ransomware",
+    "data_breach",
+    "cyber_physical",
+    "service_disruption",
+)
+# Feeds that publish one entry per CVE, so their item count is an advisory volume, not an
+# attention signal; flagged so the article/story gap is not mistaken for duplication noise.
+_PER_CVE_FEEDS = ("msrc_update_guide",)
+
+
+def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, seed: int = 1) -> dict:
+    """Measurement of the news labels, for sampling and quality control. Read-only.
+
+    Keeps three counts distinct and never conflates them:
+      - articles: raw items stored (one row per feed entry);
+      - stories: distinct story groups *within a language* (cross-language duplicates are a known,
+        unmeasured gap — the same event in IT and EN is still two stories);
+      - official_source_stories: stories carrying at least one item from a primary/official feed —
+        reported by an authoritative source, NOT an independently verified incident;
+      - incident_event_stories: stories whose label is an incident type (also reports, not verified).
+
+    Also reports within-language duplication, per-feed amplification, collection gaps (silent feeds
+    and days with no items), and a reproducible seeded sample of items with their labels so a human
+    can measure the label error rate and spot duplicates. No value here feeds the model.
+    """
+    source = _news_source(settings)
+    if source is None:
+        return {"available": False}
+    sql, params = source
+    day = _UTC_DAY
+    win = [day + " > current_date - ?::INTEGER", day + " <= current_date + 1"]
+    wsql = " AND ".join(win)
+
+    incidents = "(" + " OR ".join(f"event_type = '{e}'" for e in _INCIDENT_EVENTS) + ")"
+    counts = _rows(
+        f"""SELECT count(*) AS articles,
+                   count(DISTINCT story_id) AS stories,
+                   count(DISTINCT CASE WHEN claim_status = 'official' THEN story_id END)
+                       AS official_source_stories,
+                   count(DISTINCT CASE WHEN {incidents} THEN story_id END) AS incident_event_stories,
+                   count(DISTINCT story_id) FILTER (WHERE story_feeds > 1) AS multi_feed_stories,
+                   count(*) FILTER (WHERE event_type IS NULL) AS unlabelled_items
+            FROM {sql} WHERE {wsql}""",
+        params + [window_days],
+    )[0]
+    articles = counts["articles"]
+    stories = counts["stories"] or 0
+    counts["articles_per_story"] = round(articles / stories, 2) if stories else None
+    counts["multi_feed_story_share"] = (
+        round(counts["multi_feed_stories"] / stories, 3) if stories else None
+    )
+
+    # Per-feed: how much each feed contributes, and whether its volume is advisory (per-CVE).
+    per_feed = _rows(
+        f"""SELECT feed_id, any_value(feed_title) AS feed_title, any_value(source_kind) AS source_kind,
+                   count(*) AS articles, count(DISTINCT story_id) AS stories,
+                   max({day}) AS last_day
+            FROM {sql} WHERE {wsql}
+            GROUP BY feed_id ORDER BY articles DESC""",
+        params + [window_days],
+    )
+    for row in per_feed:
+        row["last_day"] = row["last_day"].isoformat() if row["last_day"] else None
+        row["per_cve_feed"] = row["feed_id"] in _PER_CVE_FEEDS
+
+    # Collection gaps: feeds configured but silent in the window, and days with zero items.
+    try:
+        configured = {f["id"]: f for f in news_src.load_feeds(settings)["feeds"]}
+    except Exception:
+        configured = {}
+    seen_feeds = {r["feed_id"] for r in per_feed}
+    silent_feeds = [
+        {"feed_id": fid, "feed_title": f.get("title"), "source_kind": f.get("kind")}
+        for fid, f in configured.items()
+        if fid not in seen_feeds
+    ]
+    by_day = _rows(
+        f"""SELECT {day} AS day, count(*) AS items FROM {sql} WHERE {wsql} GROUP BY 1""",
+        params + [window_days],
+    )
+    present = {r["day"] for r in by_day}
+    zero_item_days = []
+    if present:
+        lo, hi = min(present), max(present)
+        d = lo
+        while d <= hi:
+            if d not in present:
+                zero_item_days.append(d.isoformat())
+            d = date.fromordinal(d.toordinal() + 1)
+
+    # Reproducible sample for human QA: deterministic order keyed by (item_id, seed).
+    sample_rows = _rows(
+        f"""SELECT item_id, feed_id, language, title, link, cve_ids,
+                   event_type, exploitation_signal, claim_status, target_sectors,
+                   story_id, story_feeds
+            FROM {sql} WHERE {wsql}
+            ORDER BY hash(item_id || ?) LIMIT ?""",
+        params + [window_days, str(seed), sample],
+    )
+
+    return {
+        "available": True,
+        "as_of": (latest(settings, "news").isoformat() if latest(settings, "news") else None),
+        "window_days": window_days,
+        "rules_version": news_enrich.load_rules()["version"],
+        "counts": counts,
+        "count_definitions": {
+            "articles": "raw stored items, one per feed entry",
+            "stories": "distinct story groups within a language; cross-language duplicates NOT merged",
+            "official_source_stories": "stories with a primary/official-feed item: reported by an "
+            "authority, not an independently verified incident",
+            "incident_event_stories": "stories labelled as an incident type: reported, not verified",
+        },
+        "verified_incident_count": None,
+        "verified_incident_note": "Not produced from news alone: news gives reported information. A "
+        "verified-incident count would require cross-referencing a confirmation source (e.g. KEV) "
+        "and is out of scope here.",
+        "duplication": {
+            "multi_feed_stories": counts["multi_feed_stories"],
+            "multi_feed_story_share": counts["multi_feed_story_share"],
+            "cross_language_gap": "The same event in Italian and English is still two stories; "
+            "within-language grouping only. Not yet measured.",
+            "per_cve_feeds": list(_PER_CVE_FEEDS),
+        },
+        "per_feed": per_feed,
+        "collection_gaps": {
+            "silent_feeds": silent_feeds,
+            "zero_item_days": zero_item_days,
+            "note": "Silent = configured feed with no stored item in the window. Day granularity is "
+            "the stored-snapshot day; sub-day interruptions are not shown here.",
+        },
+        "sample": {"seed": seed, "size": len(sample_rows), "items": sample_rows},
+    }
 
 
 # --- cross-source ------------------------------------------------------------

@@ -316,6 +316,47 @@ def test_story_collapse_keeps_one_row_per_story(news):
     assert one["total"] == 1 and one["items"][0]["feed_id"] == "rss"  # earliest report wins
 
 
+def test_news_quality_keeps_counts_distinct_and_is_reproducible(news):
+    settings, upstream, client = news
+    # one more feed repeating the rss story, so a multi-feed story exists
+    upstream["atom"] = (
+        b"<rss version='2.0'><channel>"
+        b"<item><title>Acme gateway flaw CVE-2026-1234 exploited &amp; patched</title>"
+        b"<link>https://example.org/dup</link><guid>dup</guid>"
+        b"<pubDate>Wed, 11 Nov 2026 10:00:00 +0100</pubDate></item></channel></rss>")
+    runner.run_source(settings, "news", client=client)
+
+    q = queries.news_quality(settings, window_days=365, sample=5, seed=7)
+    assert q["available"] is True
+    c = q["counts"]
+    # three counts stay distinct and ordered: articles >= stories >= official-source stories
+    assert c["articles"] >= c["stories"] >= 0
+    assert c["official_source_stories"] <= c["stories"]
+    assert c["incident_event_stories"] <= c["stories"]
+    assert c["multi_feed_stories"] >= 1  # rss + atom now carry the same story
+    # we never claim verified incidents from news
+    assert q["verified_incident_count"] is None and q["verified_incident_note"]
+    assert "cross_language_gap" in q["duplication"]
+    # the disabled 'off' feed is configured but never collected -> visible as a gap
+    assert any(f["feed_id"] == "off" for f in q["collection_gaps"]["silent_feeds"])
+    # same seed -> same sample (reproducible); different seed may reorder
+    again = queries.news_quality(settings, window_days=365, sample=5, seed=7)
+    assert [i["item_id"] for i in q["sample"]["items"]] == [
+        i["item_id"] for i in again["sample"]["items"]]
+
+
+def test_news_quality_endpoint(news):
+    settings, upstream, client = news
+    with TestClient(app) as api:
+        runner.run_source(settings, "news", client=client)
+        r = api.get("/api/v1/news/quality", params={"window_days": 365, "sample": 3, "seed": 2})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["available"] is True
+        assert set(body["counts"]) >= {"articles", "stories", "official_source_stories"}
+        assert body["sample"]["size"] <= 3
+
+
 def test_rules_and_taxonomy_agree():
     import json
     from pathlib import Path

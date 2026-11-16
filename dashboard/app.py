@@ -458,6 +458,54 @@ def page_news() -> None:
          "consecutive_failures", "last_message"],
     )
 
+    _news_quality_section()
+
+
+def _news_quality_section() -> None:
+    """Label quality control: three distinct counts, duplication, collection gaps, review sample."""
+    st.subheader(t("newsq.title"))
+    st.caption(t("newsq.intro"))
+    window = st.select_slider(t("newsq.window"), [7, 14, 30, 90], value=30)
+    q = get("/api/v1/news/quality", window_days=window, sample=25, seed=1)
+    if not q.get("available"):
+        st.info(t("common.no_data"))
+        return
+    c = q["counts"]
+    cols = st.columns(4)
+    cols[0].metric(t("newsq.articles"), c["articles"])
+    cols[1].metric(t("newsq.stories"), c["stories"])
+    cols[2].metric(t("newsq.official"), c["official_source_stories"])
+    cols[3].metric(t("newsq.incidents"), c["incident_event_stories"])
+    st.caption(t("newsq.counts_help", ratio=c.get("articles_per_story")))
+    st.caption("⚠️ " + q["verified_incident_note"])
+
+    dup = q["duplication"]
+    share = dup.get("multi_feed_story_share")
+    st.markdown(t("newsq.dup", n=dup["multi_feed_stories"],
+                  share=f"{share * 100:.1f}%" if share is not None else "—"))
+    st.caption(t("newsq.cross_language") + " " + dup["cross_language_gap"])
+
+    gaps = q["collection_gaps"]
+    silent, zero = gaps["silent_feeds"], gaps["zero_item_days"]
+    if silent or zero:
+        with st.expander(t("newsq.gaps", silent=len(silent), zero=len(zero))):
+            if silent:
+                table(silent, ["feed_id", "feed_title", "source_kind"])
+            if zero:
+                st.write(t("newsq.zero_days") + " " + ", ".join(zero))
+            st.caption(gaps["note"])
+    else:
+        st.caption(t("newsq.no_gaps"))
+
+    with st.expander(t("newsq.sample", n=q["sample"]["size"], seed=q["sample"]["seed"])):
+        st.caption(t("newsq.sample_help"))
+        table(
+            q["sample"]["items"],
+            ["feed_id", "language", "title", "event_type", "exploitation_signal", "claim_status",
+             "story_feeds", "cve_ids", "link"],
+            links=("link",),
+        )
+
 
 def page_vulns() -> None:
     st.header(t("nav.vulns"))

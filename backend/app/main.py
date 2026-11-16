@@ -322,6 +322,18 @@ def news_daily() -> dict:
     return queries.news_daily(get_settings())
 
 
+@app.get("/api/v1/news/quality", tags=["analysis"])
+def news_quality(
+    window_days: int = Query(30, ge=1, le=365),
+    sample: int = Query(40, ge=0, le=200),
+    seed: int = Query(1),
+) -> dict:
+    """Quality control for the news labels: three distinct counts (articles / stories /
+    official-source / incident), within-language duplication, collection gaps, and a
+    reproducible seeded sample for human review. Read-only; nothing here feeds the model."""
+    return queries.news_quality(get_settings(), window_days=window_days, sample=sample, seed=seed)
+
+
 @app.get("/api/v1/news/feeds", tags=["pipeline"])
 def news_feeds() -> dict:
     settings = get_settings()

@@ -306,5 +306,22 @@
   "obs.drill": "Esplora una categoria → evidenze originali",
   "obs.pick_category": "Categoria",
   "obs.only_kev": "Solo CVE confermate (KEV)",
-  "obs.evidence_help": "CVE in {cat}, dalla più recente. Apri «Evidenza» per il record originale (NVD); la pagina Vulnerabilità ha il profilo completo con i riferimenti."
+  "obs.evidence_help": "CVE in {cat}, dalla più recente. Apri «Evidenza» per il record originale (NVD); la pagina Vulnerabilità ha il profilo completo con i riferimenti.",
+  "col.feed_id": "ID feed",
+  "col.source_kind": "Fonte",
+  "newsq.title": "Qualità delle etichette (QA)",
+  "newsq.intro": "Controllo in sola lettura delle etichette delle notizie. Articoli, storie e segnalazioni di incidenti restano tre conteggi distinti; le notizie sono informazioni riportate, mai un conteggio di incidenti verificati.",
+  "newsq.window": "Finestra (giorni)",
+  "newsq.articles": "Articoli",
+  "newsq.stories": "Storie",
+  "newsq.official": "Da fonte ufficiale",
+  "newsq.incidents": "Segnalazioni di incidenti",
+  "newsq.counts_help": "Articoli per storia: {ratio}. «Storie» raggruppa i duplicati solo entro una lingua.",
+  "newsq.dup": "**Duplicazione:** {n} storie riportate da più di un feed ({share} delle storie).",
+  "newsq.cross_language": "Tra lingue:",
+  "newsq.gaps": "Lacune di raccolta — {silent} feed silenziosi, {zero} giorni senza elementi",
+  "newsq.zero_days": "Giorni senza elementi memorizzati:",
+  "newsq.no_gaps": "Nessun feed silenzioso né giorno vuoto in questa finestra.",
+  "newsq.sample": "Campione di revisione — {n} elementi (seed {seed})",
+  "newsq.sample_help": "Un campione riproducibile per controllare a mano errori di etichetta e duplicati. Stesso seed, stesso campione."
 }
