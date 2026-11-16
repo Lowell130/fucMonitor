@@ -260,6 +260,12 @@ def test_classification_rules(title, kind, cves, event, exploited, claim, sector
         (True, "Zero-day under attack", "the flaw is actively exploited; a PoC was also published later"),
         (True, "Real attack, vendor denial", "The bug is being exploited in the wild, though the vendor disputed early reports"),
         (True, "Exploited, no ransomware", "Hackers exploited the flaw to deploy a backdoor but did not deploy ransomware"),
+        # 'exploited hours after PoC released' is real exploitation that FOLLOWS a PoC, not a demo
+        (True, "New zero-day exploited hours after PoC released",
+         "Hackers are actively exploiting a newly disclosed zero-day to compromise servers"),
+        # a source correcting its own record to say it was NOT exploited must be false
+        (False, "CVE Entra ID RCE",
+         "Corrected Exploited to No. This vulnerability was not exploited in the wild. Informational change only."),
     ],
 )
 def test_exploitation_signal_real_vs_hypothetical(want, title, summary):

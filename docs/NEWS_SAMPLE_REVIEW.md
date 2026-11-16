@@ -134,7 +134,38 @@ coprivano due fraseggi giornalistici. Aggiunti due pattern:
   risultano `exploitation_signal=true` senza corrispondere ad alcun pattern (nessuna fuga).
 - Coperto da test (`test_exploitation_signal_real_vs_hypothetical`).
 
+## Falsi positivi di contesto (verifica indipendente, regole `2026.11.16-2`)
+
+Una verifica indipendente ha riprodotto **quattro falsi positivi** che la mia misura precedente non
+aveva colto (controllavo l'innesco del pattern, non il contesto): negazione di «active
+exploitation», «zero-day exploit» **dimostrato in laboratorio**, «hackers exploit» limitato a una
+**demo**, e «exploit in circolazione» (disponibilità) senza attacchi osservati. Correzione:
+
+- `exploitation_signal` è valutato **per singolo match** con contesto **locale, limitato alla frase**,
+  mai con un veto globale: un match è scartato solo se la negazione lo riguarda (adiacente «no active
+  exploitation» o evidenziale «no evidence of exploitation»), se è seguito da un'osservazione negata
+  («… not observed»), o se accanto ha un segnale di **dimostrazione/PoC/lab**. Una demo o una
+  negazione in **un'altra frase** non nasconde un attacco reale (verificato: «actively exploited; a
+  PoC was also released», «exploited … but did not deploy ransomware», «exploited … though the vendor
+  disputed» restano `true`).
+- Rimosso «exploit in circolazione» dai pattern (è **disponibilità** di exploit, segnale distinto).
+- `sandbox` e il solo `poc` **non** sono segnali di demo: «sandbox-evading backdoor» è un attacco
+  reale e «exploited hours after PoC released» è sfruttamento che **segue** un PoC.
+
+**Verifica su dati reali** (relabel sull'intero DB, campione distinto dai test): il guard ha
+disattivato **2** item prima `true` → uno era una **negazione reale** (MSRC «was not exploited in the
+wild», soppressione corretta) e l'altro un **mio falso negativo** su «exploited hours after PoC
+released», individuato e corretto rimuovendo il `poc` nudo. Dopo la correzione, nessun item `true`
+risulta in contesto negato/demo/disponibilità e i 7 recuperati restano `true`. Coperto da test
+(falsi positivi di contesto + casi anti-veto).
+
 ## Limiti dichiarati
+
+- **Le dichiarazioni di accuratezza valgono solo per i casi effettivamente revisionati** elencati qui
+  (seed=1, n=30 e n=22; più i casi di contesto e anti-veto nei test). **Non** è una stima di
+  accuratezza generale del classificatore: la verifica indipendente ha mostrato che una misura
+  «0 falsi positivi» basata solo sull'innesco del pattern era incompleta finché non si controllava il
+  contesto. Nessun numero di accuratezza è dichiarato oltre gli item letti a mano.
 
 - Questa è una **revisione delle etichette**, **non** una verifica dei fatti: conferma che la regola
   concorda col testo, non che il fatto riportato sia vero.

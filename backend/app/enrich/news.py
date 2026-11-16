@@ -98,9 +98,11 @@ _NEG_OBS_RIGHT = re.compile(
     r"\b(observ\w+|seen|detect\w+|confirm\w+|osservat\w*|rilevat\w*|confermat\w*)"
 )
 # Demonstration / proof-of-concept / lab test next to the phrase (exploit availability, not an
-# observed attack). 'sandbox' is deliberately absent: "sandbox-evading backdoor" is a real attack.
+# observed attack). Deliberately absent: 'sandbox' ("sandbox-evading backdoor" is a real attack)
+# and a bare 'poc' ("exploited hours after PoC released" is real exploitation that FOLLOWS a PoC,
+# not a demonstration); only the spelled-out 'proof-of-concept' qualifier counts.
 _DEMO_NEAR = re.compile(
-    r"\b(demo|demos|demonstrat\w+|proof[- ]of[- ]concept|poc|laborator\w+|dimostr\w+|"
+    r"\b(demo|demos|demonstrat\w+|proof[- ]of[- ]concept|laborator\w+|dimostr\w+|"
     r"simulat\w+|in (?:a |the )?lab)\b"
 )
 
