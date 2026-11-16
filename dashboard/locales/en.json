@@ -340,5 +340,10 @@
   "news.scope_all": "All sources",
   "news.scope_help_all_except_per_cve": "Every source minus per-CVE advisory feeds ({feeds}); official advisories still included. Not the press-only view.",
   "news.scope_help_press": "Specialist and general media only (press attention); official advisory feeds excluded.",
-  "news.scope_help_all": "Every source with no filter, per-CVE advisory feeds included."
+  "news.scope_help_all": "Every source with no filter, per-CVE advisory feeds included.",
+  "newsq.holdout": "Forward hold-out: sample news since",
+  "newsq.exploitation": "Exploitation reports",
+  "newsq.exploitation_help": "Items the rules read as reports of real exploitation ({items} items). NOT distinct attacks or verified incidents — duplicates across feeds and residual rule errors are included; it counts labels, not events.",
+  "newsq.frozen": "News rules frozen at {v}.",
+  "newsq.sample_holdout": "Review sample — {n} items, forward hold-out since {since}"
 }

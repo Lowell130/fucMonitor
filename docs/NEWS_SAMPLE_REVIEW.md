@@ -174,3 +174,24 @@ risulta in contesto negato/demo/disponibilità e i 7 recuperati restano `true`. 
 - Resta un difetto noto non corretto qui (fuori ambito `exploitation_signal`): sovra-innesco di
   `event_type=vulnerability_disclosure` su pezzi di tendenza (#2) ed estrazione CVE quando il
   sommario non lo contiene (#3) — eventuale correzione futura, versionata e testata.
+
+## Decisione: congelare le regole e valutare in avanti
+
+Due precisazioni che chiudono questo giro:
+
+1. **Il corpus usato per correggere non è più indipendente.** Dopo averlo esaminato e usato per
+   affinare le regole, non misura più la generalizzazione. Serve un **campione nuovo — idealmente
+   notizie raccolte dopo** — per stimare quanto la soluzione regga sui casi futuri.
+2. **«N etichette positive» ≠ «N attacchi distinti».** Il conteggio `exploitation_report_items`
+   (ora esposto) è il numero di **elementi che le regole leggono come resoconti di sfruttamento
+   reale**, con **possibili duplicati** (tra feed, tra lingue) ed **errori residui**. È un conteggio
+   di etichette, non di eventi né di incidenti verificati; l'API e la dashboard lo dichiarano.
+
+**Decisione operativa:** le regole notizie sono **congelate a `2026.11.16-2`**. Si **ferma
+l'ampliamento**. Periodicamente si estrae un **campione in avanti** (`news/quality` con
+`sample_since` dopo l'ultima taratura), si **annotano gli errori**, e solo con quell'evidenza si
+decide un'eventuale modifica. Continuare ad adattare le regole allo stesso corpus rischia di
+migliorare gli esempi noti senza migliorare quelli futuri.
+
+Questa resta una valutazione delle etichette e **non** tocca il modello predittivo (candidato CVE,
+registro prospettico, baseline per categoria invariati).

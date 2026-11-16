@@ -334,13 +334,14 @@ def news_quality(
     sample: int = Query(40, ge=0, le=200),
     seed: int = Query(1),
     sample_exclude_per_cve: bool = Query(False),
+    sample_since: date | None = Query(None, description="Forward hold-out: sample only items first seen on/after this date (news NOT used to tune the frozen rules)."),
 ) -> dict:
     """Quality control for the news labels: three distinct lenses (technical / editorial / incident),
     an attention count that excludes per-CVE feeds, collection gaps split into failures vs quiet
-    days, and a reproducible seeded sample for human review (sample_exclude_per_cve targets the
-    free-text items where the rules actually struggle). Read-only; nothing here feeds the model."""
+    days, and a reproducible seeded sample for human review. Set sample_since to draw a forward
+    hold-out of new news to measure generalisation. Read-only; nothing here feeds the model."""
     return queries.news_quality(get_settings(), window_days=window_days, sample=sample, seed=seed,
-                                sample_exclude_per_cve=sample_exclude_per_cve)
+                                sample_exclude_per_cve=sample_exclude_per_cve, sample_since=sample_since)
 
 
 @app.get("/api/v1/news/feeds", tags=["pipeline"])

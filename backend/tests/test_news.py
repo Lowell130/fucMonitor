@@ -449,6 +449,18 @@ def test_attention_trend_excludes_per_cve_feeds(settings, tmp_path, monkeypatch)
     assert targeted["sample"]["excludes_per_cve_feeds"] is True
     assert all(i["feed_id"] != "msrc_update_guide" for i in targeted["sample"]["items"])
 
+    # exploitation reports are counted but framed as labels, not distinct incidents
+    base = queries.news_quality(settings, window_days=365, sample=0)
+    assert "exploitation_report_items" in base["counts"]
+    assert "exploitation_report_stories" in base["counts"]
+    assert base["evaluation"]["rules_frozen_version"]  # frozen-rules note present
+
+    # forward hold-out: a cut-off in the future yields an empty sample (nothing collected yet)
+    from datetime import date, timedelta
+    future = queries.news_quality(settings, window_days=365, sample=10,
+                                  sample_since=date.today() + timedelta(days=3650))
+    assert future["sample"]["since"] and future["sample"]["size"] == 0
+
     q = queries.news_quality(settings, window_days=365, sample=0)
     assert q["streams"]["technical_advisories"]["stories"] == 2  # the two MSRC advisories
     # attention (all except per-CVE) keeps official non-per-CVE advisories; here MSRC is the only

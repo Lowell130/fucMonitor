@@ -317,7 +317,7 @@ def _news_run_days(settings: Settings, window_days: int) -> tuple[dict, set]:
 
 
 def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, seed: int = 1,
-                 sample_exclude_per_cve: bool = False) -> dict:
+                 sample_exclude_per_cve: bool = False, sample_since: date | None = None) -> dict:
     """Quality control for the news labels, read-only. Nothing here feeds the model.
 
     Keeps the advisories whole but splits them into three lenses that must not be conflated:
@@ -346,6 +346,9 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
                    count(DISTINCT CASE WHEN claim_status = 'official' THEN story_id END)
                        AS official_source_stories,
                    count(DISTINCT CASE WHEN {incidents} THEN story_id END) AS incident_event_stories,
+                   count(*) FILTER (WHERE coalesce(exploitation_signal, false)) AS exploitation_report_items,
+                   count(DISTINCT CASE WHEN coalesce(exploitation_signal, false) THEN story_id END)
+                       AS exploitation_report_stories,
                    count(DISTINCT story_id) FILTER (WHERE story_feeds > 1) AS multi_feed_stories,
                    count(*) FILTER (WHERE event_type IS NULL) AS unlabelled_items,
                    count(*) FILTER (WHERE feed_id NOT IN {per_cve_sql}) AS attention_articles,
@@ -442,13 +445,20 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
     # optionally drop per-CVE feeds: their labels are near-trivial, so a volume-weighted sample is
     # dominated by them and under-tests the free-text items where the rules actually struggle.
     sample_where = wsql + (f" AND feed_id NOT IN {per_cve_sql}" if sample_exclude_per_cve else "")
+    sample_params = list(params) + [window_days]
+    if sample_since is not None:
+        # Forward hold-out: review only items first seen on/after a cut-off, i.e. news NOT used to
+        # tune the current rules, so the sample measures generalisation rather than fit.
+        first_seen_day = "CAST(make_timestamp(CAST(epoch(first_seen_at) * 1000000 AS BIGINT)) AS DATE)"
+        sample_where += f" AND {first_seen_day} >= ?"
+        sample_params.append(sample_since)
     sample_rows = _rows(
         f"""SELECT item_id, feed_id, source_kind, language, title, summary, link, cve_ids,
                    event_type, exploitation_signal, claim_status, target_sectors,
                    story_id, story_feeds
             FROM {sql} WHERE {sample_where}
             ORDER BY hash(item_id || ?) LIMIT ?""",
-        params + [window_days, str(seed), sample],
+        sample_params + [str(seed), sample],
     )
 
     return {
@@ -465,6 +475,11 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
             "incident_event_stories": "stories labelled as an incident type: reported, not verified",
             "attention_articles": "articles excluding per-CVE feeds (the attention default)",
             "attention_stories": "stories excluding per-CVE feeds (the attention default)",
+            "exploitation_report_items": "items the keyword rules read as REPORTS of real "
+            "exploitation. NOT distinct attacks or verified incidents: duplicates across feeds and "
+            "residual rule errors are included. A count of labels, not of events.",
+            "exploitation_report_stories": "the same, de-duplicated within a language (still reports, "
+            "not verified distinct incidents).",
         },
         "streams": streams,
         "attention": {
@@ -510,8 +525,16 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
             "seed": seed,
             "size": len(sample_rows),
             "excludes_per_cve_feeds": bool(sample_exclude_per_cve),
+            "since": sample_since.isoformat() if sample_since else None,
             "reviewed": False,
             "items": sample_rows,
+        },
+        "evaluation": {
+            "rules_frozen_version": news_enrich.load_rules()["version"],
+            "note": "News rules are frozen. The stored corpus has been used to tune them, so it is "
+            "no longer an independent test. Measure generalisation on NEW news only: draw the review "
+            "sample with sample_since set to a cut-off AFTER the last tuning, record errors, and do "
+            "not change the rules again before that evidence exists.",
         },
         "label_quality_measured": False,
         "label_quality_note": "This sample is generated, not reviewed. The label error rate and "

@@ -340,5 +340,10 @@
   "news.scope_all": "Tutte le fonti",
   "news.scope_help_all_except_per_cve": "Tutte le fonti meno i feed advisory per singola vulnerabilità ({feeds}); gli advisory ufficiali restano inclusi. Non è la vista di sola stampa.",
   "news.scope_help_press": "Solo stampa specializzata e generalista (attenzione editoriale); esclusi i feed di advisory ufficiali.",
-  "news.scope_help_all": "Tutte le fonti senza filtro, inclusi i feed advisory per singola vulnerabilità."
+  "news.scope_help_all": "Tutte le fonti senza filtro, inclusi i feed advisory per singola vulnerabilità.",
+  "newsq.holdout": "Campione in avanti: notizie dalla data",
+  "newsq.exploitation": "Resoconti di sfruttamento",
+  "newsq.exploitation_help": "Elementi che le regole leggono come resoconti di sfruttamento reale ({items} elementi). NON attacchi distinti né incidenti verificati — includono duplicati tra feed ed errori residui delle regole; conta etichette, non eventi.",
+  "newsq.frozen": "Regole notizie congelate a {v}.",
+  "newsq.sample_holdout": "Campione di revisione — {n} elementi, campione in avanti dal {since}"
 }

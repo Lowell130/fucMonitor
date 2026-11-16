@@ -161,6 +161,14 @@ Consolidamento e valutazione prospettica (fatto):
      `label_quality_measured: false`; il tasso di errore delle etichette e dei duplicati **non è
      misurato** finché qualcuno non etichetta il campione. Da non dichiarare «qualità misurata»
      prima di quel controllo.
+   - *Segnale di sfruttamento — definito, corretto, poi **congelato**.* `exploitation_signal` =
+     **sfruttamento reale osservato**, non dimostrazioni/PoC, ipotesi, sospetti o negazioni (guard di
+     contesto per frase, non veto globale). Dopo la revisione del campione (vedi
+     `docs/NEWS_SAMPLE_REVIEW.md`) le regole sono **congelate a `2026.11.16-2`**: il corpus usato per
+     correggere non è più un test indipendente, quindi si valuta la generalizzazione solo su
+     **notizie nuove** (`news/quality` con `sample_since`), annotando gli errori **prima** di ogni
+     modifica. Il conteggio `exploitation_report_items` è un numero di **etichette** (con duplicati
+     ed errori residui), non di attacchi o incidenti distinti.
 4. Revisione della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
    - *Fatto, primo giro (regole, versione `2026.11.16-1`).* Sulla coda reale, i prodotti non
      classificati con più peso sono quelli dietro CVE **già in KEV**: alla revisione risultavano 280

@@ -477,8 +477,11 @@ def _news_quality_section() -> None:
     """Label quality control: three distinct counts, duplication, collection gaps, review sample."""
     st.subheader(t("newsq.title"))
     st.caption(t("newsq.intro"))
-    window = st.select_slider(t("newsq.window"), [7, 14, 30, 90], value=30)
-    q = get("/api/v1/news/quality", window_days=window, sample=25, seed=1)
+    a, b = st.columns([1, 1])
+    window = a.select_slider(t("newsq.window"), [7, 14, 30, 90], value=30)
+    holdout = b.date_input(t("newsq.holdout"), value=None)
+    q = get("/api/v1/news/quality", window_days=window, sample=25, seed=1,
+            sample_since=holdout.isoformat() if holdout else None)
     if not q.get("available"):
         st.info(t("common.no_data"))
         return
@@ -500,6 +503,9 @@ def _news_quality_section() -> None:
     st.caption(t("newsq.attention_help", feeds=", ".join(att.get("excludes_per_cve_feeds") or []) or "—",
                  ratio=c.get("articles_per_story")))
     st.caption("⚠️ " + q["verified_incident_note"])
+
+    st.metric(t("newsq.exploitation"), c.get("exploitation_report_stories", "—"))
+    st.caption("⚠️ " + t("newsq.exploitation_help", items=c.get("exploitation_report_items", "—")))
 
     dup = q["duplication"]
     share = dup.get("multi_feed_story_share")
@@ -527,7 +533,14 @@ def _news_quality_section() -> None:
     else:
         st.caption(t("newsq.no_gaps"))
 
-    with st.expander(t("newsq.sample", n=q["sample"]["size"], seed=q["sample"]["seed"])):
+    ev = q.get("evaluation", {})
+    if ev:
+        st.caption("🔒 " + t("newsq.frozen", v=ev.get("rules_frozen_version", "—")) + " " + ev.get("note", ""))
+
+    since = q["sample"].get("since")
+    label = t("newsq.sample_holdout", n=q["sample"]["size"], since=since) if since else \
+        t("newsq.sample", n=q["sample"]["size"], seed=q["sample"]["seed"])
+    with st.expander(label):
         st.warning(t("newsq.not_reviewed") if not q.get("label_quality_measured") else "")
         st.caption(q.get("label_quality_note", ""))
         table(
