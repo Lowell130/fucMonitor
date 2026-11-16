@@ -408,3 +408,25 @@ def test_collection_health_reports_staleness_and_problems(settings):
     assert rep["problems"]                       # stale sources surfaced
     assert {s["source"] for s in rep["sources"]} >= {"kev", "epss", "nvd", "scans"}
     assert all("stale" in s for s in rep["sources"])
+
+
+def test_watchlist_loads_validates_and_weights(settings):
+    from app import watchlist
+    # absent -> inactive, with a helpful note
+    wl0 = watchlist.load(settings)
+    assert wl0["active"] is False and "watchlist.json" in wl0["note"]
+    # write one valid category and one unknown id
+    (pathlib_Path := __import__("pathlib").Path)(settings.data_dir).mkdir(parents=True, exist_ok=True)
+    (pathlib_Path(settings.data_dir) / "watchlist.json").write_text(__import__("json").dumps({
+        "impact_weights": {"low": 1, "medium": 2, "high": 4},
+        "categories": [{"category_id": "vpn_remote_access", "impact": "high"},
+                       {"category_id": "not_a_real_category", "impact": "low"}],
+        "products": [{"product": "acme:gw", "impact": "medium"}],
+    }))
+    wl = watchlist.load(settings)
+    assert wl["active"] is True
+    assert wl["categories"]["vpn_remote_access"]["weight"] == 4.0
+    assert "not_a_real_category" in wl["unknown_category_ids"]   # unknown surfaced, not silently kept
+    assert wl["products"]["acme:gw"]["weight"] == 2.0
+    assert watchlist.category_weight(wl, "vpn_remote_access") == 4.0
+    assert watchlist.category_weight(wl, "web_cms") == 0.0

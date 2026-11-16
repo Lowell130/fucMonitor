@@ -563,6 +563,30 @@ def epss_experiment_exploit_ablation(
         raise HTTPException(422, str(exc)) from exc
 
 
+@app.get("/api/v1/analysis/watchlist", tags=["analysis"])
+def watchlist_config() -> dict:
+    """The loaded watchlist (data/watchlist.json): which categories/products matter to you and with
+    what impact. Reports unknown category ids and whether it is active."""
+    from . import watchlist
+
+    return watchlist.load(get_settings())
+
+
+@app.get("/api/v1/analysis/watchlist/alerts", tags=["analysis"])
+def watchlist_alerts(horizon: int = Query(30, ge=7, le=90), top: int = Query(100, ge=1, le=1000)) -> dict:
+    """Experimental CVE alerts re-ranked by probability x impact using your watchlist. Probability
+    (measured) and impact (declared) stay separate; the probability model is untouched. Inactive
+    until data/watchlist.json exists."""
+    try:
+        from . import watchlist
+    except ImportError as exc:
+        raise HTTPException(503, f"needs numpy; rebuild the image: {exc}") from exc
+    try:
+        return watchlist.impact_alerts(get_settings(), horizon=horizon, top=top)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.get("/api/v1/health/collection", tags=["pipeline"])
 def collection_health() -> dict:
     """Daily reliability check: is every source fresh, did the last runs succeed, is the prediction
