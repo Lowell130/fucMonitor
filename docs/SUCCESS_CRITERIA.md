@@ -39,11 +39,18 @@ sono osservazioni indipendenti. La decisione di successo si valuta perciò su **
 (una ogni ~30 giorni, prese senza sovrapposizione); gli snapshot giornalieri restano per il
 monitoraggio continuo. Nessuna conclusione stabile prima di:
 
-- **≥ 6 finestre disgiunte concluse e coperte** (circa sei mesi di accumulo), **e**
+- **≥ 6 finestre disgiunte concluse e coperte**, **e**
 - **≥ 50 ingressi KEV osservati** complessivi in quelle finestre indipendenti.
 
+**Tempistica (indicativa, non una promessa).** A partire dall'emissione del 15 novembre 2026, sei
+finestre consecutive e disgiunte di 30 giorni maturano **indicativamente a metà maggio 2027**. È il
+limite inferiore: la soglia dei **50 ingressi KEV** può richiedere **più tempo**, perché dipende da
+quanti ingressi cadono davvero in quelle finestre. L'intero esito è quindi **subordinato alla
+copertura dei dati e agli eventi osservati**, non al solo trascorrere del tempo: «a metà maggio 2027
+avremo un riscontro» è corretto, «avremo certamente la risposta» no.
+
 La prima finestra (emessa 15 novembre, chiude 15 dicembre 2026) darà un **primo riscontro**, non una
-conclusione. Fino alla soglia di evidenza, l'esito resta «dati insufficienti».
+conclusione. Fino a quando entrambe le soglie non sono raggiunte, l'esito resta «dati insufficienti».
 
 ## Regola di decisione
 
@@ -59,3 +66,8 @@ conclusione. Fino alla soglia di evidenza, l'esito resta «dati insufficienti».
 - Il bersaglio è l'ingresso nel **catalogo KEV**, non lo sfruttamento reale.
 - Il candidato in valutazione **non si cambia** durante l'accumulo; una nuova versione si registra
   separatamente, preservando le previsioni precedenti.
+- **Stabilità non significa conservare un difetto.** Non cambiare il *modello* non impedisce di
+  correggere errori nella **raccolta, nella registrazione o nella misurazione**: queste correzioni
+  restano dovute. Ogni correzione di questo tipo va documentata (in `DECISIONS.md` e nel log delle
+  esecuzioni) indicando **quali previsioni o finestre ne sono interessate**, così la serie
+  prospettica resta interpretabile e la correzione non viene scambiata per un cambio di candidato.

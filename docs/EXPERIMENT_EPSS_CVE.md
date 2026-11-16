@@ -141,8 +141,11 @@ Precisione/richiamo a parità di allerte **per data di valutazione** (non al gio
 - **Il Brier non migliora: nessun modello batte la frequenza costante.** EPSS grezzo come
   probabilità ha BSS −238 (la sua scala è per un evento più frequente). I modelli ricalibrati
   arrivano a BSS leggermente *negativo* (ricalibrato −0,000, EPSS+età −0,002): sono **un filo
-  peggiori** di una previsione costante pari alla prevalenza, non migliori. Nessun modello aggiunge
-  abilità probabilistica: il valore è solo nell'ordinamento, non nei valori di probabilità.
+  peggiori** di una previsione costante pari alla prevalenza, non migliori. In altre parole:
+  **nessun miglioramento di abilità probabilistica dimostrato in questo esperimento, misurato dal
+  Brier rispetto alla frequenza base.** Il valore dimostrato è solo nell'ordinamento, non nei
+  valori di probabilità; questa è un'assenza di beneficio *su questa misura e con queste feature*,
+  non la prova che nessuna codifica di probabilità possa mai calibrare meglio.
 - **Il segnale reale è la discriminazione, e viene dall'età.** EPSS+età ordina meglio di EPSS da
   solo gli ingressi imminenti in KEV, in modo stabile dal 2023 al 2026.
 - **La performance assoluta resta bassa.** Il 55 % degli ingressi KEV aveva EPSS < 0,05 alla data
@@ -223,6 +226,12 @@ Seguendo il principio «integra soltanto risultati giustificati»:
 - PR-AUC poco informativa a questa prevalenza.
 - Performance assoluta bassa: la maggior parte degli ingressi non è anticipabile da EPSS+età.
 - EPSS storico è ricostruito dai file datati FIRST (fedele), non catturato dal vivo allora.
+- **Portata della conclusione.** È concluso un **insieme di configurazioni provate**, non la
+  ricerca retrospettiva. Sostenibile: nelle rappresentazioni usate qui, l'età è utile
+  all'ordinamento; trend EPSS, exploit pubblici e scansioni non hanno aggiunto un beneficio
+  convincente. Non è dimostrato che altre codifiche degli stessi segnali (p.es. una recency a
+  fasce, finestre o interazioni diverse, un collegamento exploit↔CVE point-in-time) siano inutili:
+  restano ipotesi da misurare in esperimenti separati.
 
 ## 9. Stato e prossimo passo
 

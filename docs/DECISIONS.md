@@ -1,6 +1,6 @@
 # Decisioni di progetto
 
-Aggiornato al 12 novembre 2026.
+Aggiornato al 16 novembre 2026.
 
 ## Obiettivo
 
@@ -149,5 +149,23 @@ Consolidamento e valutazione prospettica (fatto):
   contributo finché non è pronto.
 3. Notizie (contenuto app): raggruppamento multilingue e verifica a campione della qualità delle regole.
 4. Revisione manuale della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
-5. Aggregazione per categoria e pagina Previsioni.
-6. Segnali live, poi frontend React.
+5. **Aggregazione per categoria — che cosa esiste già e che cosa manca** (una baseline c'è già).
+   - *Esiste.* `analysis/exploitation.py::forecast` (metodo `recent_rate`): per ogni categoria, il
+     conteggio atteso di CVE che entrano in KEV nell'orizzonte = volume recente di pubblicazioni ×
+     tasso storico censurato per orizzonte, con intervallo di Byar/Poisson. È **descrittiva**, non un
+     modello, calcolata uguale ogni volta; è la baseline che l'Osservatorio mostra come
+     `category_forecast` e che qualsiasi modello deve battere. La previsione per categoria **non è
+     scoperta**: manca semmai di *validazione prospettica* propria (oggi ha solo il backtest).
+   - *Manca, ma con cautela.* Un'eventuale aggregazione **per categoria dei punteggi del modello
+     sperimentale** (EPSS+età) non è ancora giustificata: quei punteggi battono EPSS **solo
+     sull'ordinamento**, e sul Brier non migliorano la frequenza base (vedi esperimento). Sommare
+     punteggi non calibrati **non** produce automaticamente un conteggio atteso affidabile per
+     categoria (un ranking non è una probabilità). Regola: **non aggregare i punteggi sperimentali
+     come probabilità o conteggi attesi** finché non esiste una calibrazione per categoria validata
+     in modo prospettico. Fino ad allora la baseline `recent_rate` resta l'unica stima di conteggio
+     per categoria; il modello sperimentale resta una **lista di allerte ordinata**, separata.
+   - *Lavoro definito (senza toccare il candidato).* (a) dare alla previsione per categoria una
+     verifica prospettica propria, analoga al registro CVE (conteggi attesi vs osservati per
+     finestra, copertura degli intervalli); (b) solo dopo, valutare se una calibrazione per categoria
+     del punteggio sperimentale aggiunge qualcosa, come esperimento separato e misurato.
+6. Pagina Previsioni e segnali live, poi frontend React.
