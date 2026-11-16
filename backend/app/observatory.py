@@ -70,8 +70,10 @@ def overview(settings: Settings, horizon: int = 30) -> dict:
             "source": "news/advisories (reported, keyword-labelled, NOT verified)",
             "as_of": str(news_as_of),
             "reported_event_types_30d": dict(sorted(agg.items(), key=lambda kv: -kv[1])),
+            "excludes_per_cve_feeds": trend.get("excluded_per_cve_feeds", []),
             "caveat": "reported event-type labels from news keyword rules (partly wrong); these are "
-                      "NOT verified consequences and NOT a measure of impact or severity.",
+                      "NOT verified consequences and NOT a measure of impact or severity. Per-CVE "
+                      "advisory feeds are excluded so counts reflect distinct reports, not CVE volume.",
         }
 
     # --- PREDICTIONS -----------------------------------------------------------------------
@@ -128,7 +130,9 @@ def overview(settings: Settings, horizon: int = 30) -> dict:
             "source": "RSS feeds (official advisories + security + general press)",
             "as_of": str(news_as_of),
             "caveat": "article volume is ATTENTION, not impact; news history is short, so trends "
-                      "over time are not yet meaningful (see news-readiness).",
+                      "over time are not yet meaningful (see news-readiness). Per-CVE advisory feeds "
+                      "are excluded by default so this reflects attention, not CVE-advisory volume.",
+            "excludes_per_cve_feeds": trend.get("excluded_per_cve_feeds", []),
             "stories_by_category_30d": dict(sorted(agg.items(), key=lambda kv: -kv[1])),
         }
 

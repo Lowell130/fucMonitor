@@ -428,7 +428,13 @@ def page_news() -> None:
         t("news.trend_show"), list(names), default=[k for k in names if k not in quiet],
         format_func=lambda k: names.get(k, k),
     )
-    trend = [r for r in get("/api/v1/news/trend", by=by, days=days)["items"] if r["key"] in shown]
+    exclude_per_cve = st.checkbox(t("news.exclude_per_cve"), value=True)
+    trend_data = get("/api/v1/news/trend", by=by, days=days,
+                     exclude_per_cve="true" if exclude_per_cve else "false")
+    dropped = trend_data.get("excluded_per_cve_feeds") or []
+    if exclude_per_cve and dropped:
+        st.caption(t("news.exclude_per_cve_on", feeds=", ".join(dropped)))
+    trend = [r for r in trend_data["items"] if r["key"] in shown]
     if trend:
         frame = pd.DataFrame(trend)
         frame["day"] = pd.to_datetime(frame["day"])
@@ -471,12 +477,22 @@ def _news_quality_section() -> None:
         st.info(t("common.no_data"))
         return
     c = q["counts"]
-    cols = st.columns(4)
+    # Three separate lenses on the same advisories (kept whole).
+    streams = q.get("streams", {})
+    cols = st.columns(3)
+    tech, edit, inc = streams.get("technical_advisories", {}), streams.get("editorial_attention", {}), streams.get("incident_reports", {})
+    cols[0].metric(t("newsq.technical"), tech.get("stories", "—"))
+    cols[1].metric(t("newsq.editorial"), edit.get("stories", "—"))
+    cols[2].metric(t("newsq.incidents"), inc.get("stories", "—"))
+    st.caption(t("newsq.streams_help"))
+
+    att = q.get("attention", {})
+    cols = st.columns(3)
     cols[0].metric(t("newsq.articles"), c["articles"])
     cols[1].metric(t("newsq.stories"), c["stories"])
-    cols[2].metric(t("newsq.official"), c["official_source_stories"])
-    cols[3].metric(t("newsq.incidents"), c["incident_event_stories"])
-    st.caption(t("newsq.counts_help", ratio=c.get("articles_per_story")))
+    cols[2].metric(t("newsq.attention"), att.get("stories", "—"))
+    st.caption(t("newsq.attention_help", feeds=", ".join(att.get("excludes_per_cve_feeds") or []) or "—",
+                 ratio=c.get("articles_per_story")))
     st.caption("⚠️ " + q["verified_incident_note"])
 
     dup = q["duplication"]
@@ -486,19 +502,28 @@ def _news_quality_section() -> None:
     st.caption(t("newsq.cross_language") + " " + dup["cross_language_gap"])
 
     gaps = q["collection_gaps"]
-    silent, zero = gaps["silent_feeds"], gaps["zero_item_days"]
-    if silent or zero:
-        with st.expander(t("newsq.gaps", silent=len(silent), zero=len(zero))):
+    fails, quiet, norun, silent = (gaps.get("collection_failures") or [], gaps.get("quiet_days") or [],
+                                   gaps.get("no_run_days") or [], gaps.get("silent_feeds") or [])
+    failing_feeds = [s for s in silent if s.get("failing")]
+    if fails or quiet or norun or silent:
+        with st.expander(t("newsq.gaps", fail=len(fails) + len(failing_feeds), quiet=len(quiet))):
+            if fails:
+                st.markdown("**" + t("newsq.failures") + "**")
+                table(fails, ["day", "failed_runs"])
             if silent:
-                table(silent, ["feed_id", "feed_title", "source_kind"])
-            if zero:
-                st.write(t("newsq.zero_days") + " " + ", ".join(zero))
+                st.markdown("**" + t("newsq.silent") + "**")
+                table(silent, ["feed_id", "feed_title", "source_kind", "failing", "consecutive_failures", "last_success_at"])
+            if quiet:
+                st.write("**" + t("newsq.quiet") + "** " + ", ".join(quiet))
+            if norun:
+                st.write("**" + t("newsq.norun") + "** " + ", ".join(norun))
             st.caption(gaps["note"])
     else:
         st.caption(t("newsq.no_gaps"))
 
     with st.expander(t("newsq.sample", n=q["sample"]["size"], seed=q["sample"]["seed"])):
-        st.caption(t("newsq.sample_help"))
+        st.warning(t("newsq.not_reviewed") if not q.get("label_quality_measured") else "")
+        st.caption(q.get("label_quality_note", ""))
         table(
             q["sample"]["items"],
             ["feed_id", "language", "title", "event_type", "exploitation_signal", "claim_status",

@@ -334,15 +334,66 @@ def test_news_quality_keeps_counts_distinct_and_is_reproducible(news):
     assert c["official_source_stories"] <= c["stories"]
     assert c["incident_event_stories"] <= c["stories"]
     assert c["multi_feed_stories"] >= 1  # rss + atom now carry the same story
-    # we never claim verified incidents from news
+    # three separate lenses on the same advisories
+    s = q["streams"]
+    assert {"technical_advisories", "editorial_attention", "incident_reports"} <= set(s)
+    assert s["technical_advisories"]["stories"] >= 1  # the primary 'atom' feed
+    assert s["editorial_attention"]["stories"] >= 1  # the specialist 'rss' / general 'gen'
+    # attention excludes per-CVE feeds and is never larger than all stories
+    assert q["attention"]["stories"] <= c["stories"]
+    assert q["attention"]["excludes_per_cve_feeds"] == ["msrc_update_guide"]
+    # we never claim verified incidents, nor measured label quality, from generation alone
     assert q["verified_incident_count"] is None and q["verified_incident_note"]
-    assert "cross_language_gap" in q["duplication"]
-    # the disabled 'off' feed is configured but never collected -> visible as a gap
-    assert any(f["feed_id"] == "off" for f in q["collection_gaps"]["silent_feeds"])
+    assert q["label_quality_measured"] is False and q["sample"]["reviewed"] is False
+    # collection gaps split failures / quiet / no-run, and the disabled 'off' feed is visible
+    g = q["collection_gaps"]
+    assert {"collection_failures", "quiet_days", "no_run_days", "silent_feeds"} <= set(g)
+    assert any(f["feed_id"] == "off" for f in g["silent_feeds"])
     # same seed -> same sample (reproducible); different seed may reorder
     again = queries.news_quality(settings, window_days=365, sample=5, seed=7)
     assert [i["item_id"] for i in q["sample"]["items"]] == [
         i["item_id"] for i in again["sample"]["items"]]
+
+
+def test_attention_trend_excludes_per_cve_feeds(settings, tmp_path, monkeypatch):
+    """The attention chart drops one-entry-per-CVE feeds by default; the full view keeps them."""
+    feeds = {"feeds": [
+        {"id": "msrc_update_guide", "title": "MSRC", "url": "https://feeds.test/msrc", "language": "en", "kind": "primary"},
+        {"id": "thehackernews", "title": "THN", "url": "https://feeds.test/thn", "language": "en", "kind": "specialist"},
+    ]}
+    path = tmp_path / "feeds.json"
+    path.write_text(json.dumps(feeds))
+    settings.news_feeds_file = path
+    msrc = (b"<rss version='2.0'><channel>"
+            b"<item><title>CVE-2026-100 in product A</title><link>https://msrc/a</link><guid>m-a</guid>"
+            b"<pubDate>Wed, 11 Nov 2026 09:00:00 +0000</pubDate><description>cve-2026-100</description></item>"
+            b"<item><title>CVE-2026-101 in product B</title><link>https://msrc/b</link><guid>m-b</guid>"
+            b"<pubDate>Wed, 11 Nov 2026 09:00:00 +0000</pubDate><description>cve-2026-101</description></item></channel></rss>")
+    thn = (b"<rss version='2.0'><channel>"
+           b"<item><title>Ransomware hits a hospital network</title><link>https://thn/x</link><guid>t-x</guid>"
+           b"<pubDate>Wed, 11 Nov 2026 10:00:00 +0000</pubDate><description>ransomware attack</description></item></channel></rss>")
+
+    def handler(request):
+        name = request.url.path.strip("/")
+        body = {"msrc": msrc, "thn": thn}[name]
+        return httpx.Response(200, content=body, headers={"ETag": '"v1"'})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    runner.run_source(settings, "news", client=client)
+
+    full = queries.news_trend(settings, by="event_type", days=365, exclude_per_cve=False)
+    attention = queries.news_trend(settings, by="event_type", days=365, exclude_per_cve=True)
+    assert full["excluded_per_cve_feeds"] == []
+    assert attention["excluded_per_cve_feeds"] == ["msrc_update_guide"]
+    full_total = sum(r["stories"] for r in full["items"])
+    att_total = sum(r["stories"] for r in attention["items"])
+    assert full_total > att_total  # the two MSRC per-CVE stories are dropped from attention
+    # the editorial ransomware story survives in the attention view
+    assert any(r["key"] == "ransomware" for r in attention["items"])
+
+    q = queries.news_quality(settings, window_days=365, sample=0)
+    assert q["streams"]["technical_advisories"]["stories"] == 2  # the two MSRC advisories
+    assert q["attention"]["stories"] == 1  # only the editorial story remains
 
 
 def test_news_quality_endpoint(news):

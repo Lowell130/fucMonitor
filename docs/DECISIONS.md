@@ -148,6 +148,19 @@ Consolidamento e valutazione prospettica (fatto):
 - **Notizie**: si lascia accumulare lo storico (sonda `news-readiness`); nessuna valutazione del
   contributo finché non è pronto.
 3. Notizie (contenuto app): raggruppamento multilingue e verifica a campione della qualità delle regole.
+   - *Controllo qualità notizie (fatto, solo misura — non tocca il modello).* Endpoint
+     `GET /api/v1/news/quality`. Tiene gli avvisi **interi** ma li separa in tre lenti: **avvisi
+     tecnici** (feed ufficiali), **attenzione editoriale** (stampa specializzata e generalista) e
+     **segnalazioni di incidenti** (etichetta di tipo incidente, trasversale; riportate, non
+     verificate). Il **grafico di attenzione** (`news/trend`, osservatorio incluso) **esclude per
+     default i feed per singola vulnerabilità** (Microsoft MSRC: una voce per CVE, ~75% degli
+     articoli), filtro reso **esplicito** con vista completa accessibile. Le **lacune di raccolta**
+     distinguono **fallimenti** (un run è fallito, dallo stato operativo), **giorni quieti** (run
+     eseguito, nulla di nuovo) e **nessun run**; i feed silenziosi sono marcati «in errore» se lo
+     stato lo indica. **Onestà sul campione**: il campione è **solo generato, non revisionato** →
+     `label_quality_measured: false`; il tasso di errore delle etichette e dei duplicati **non è
+     misurato** finché qualcuno non etichetta il campione. Da non dichiarare «qualità misurata»
+     prima di quel controllo.
 4. Revisione della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
    - *Fatto, primo giro (regole, versione `2026.11.16-1`).* Sulla coda reale, i prodotti non
      classificati con più peso sono quelli dietro CVE **già in KEV**: alla revisione risultavano 280
@@ -165,6 +178,7 @@ Consolidamento e valutazione prospettica (fatto):
      i **denominatori per categoria** dell'osservatorio e la baseline `recent_rate` per categoria; **non**
      tocca il modello CVE sperimentale né il registro prospettico. Le assegnazioni restano riproducibili
      dalle regole + eventuali decisioni manuali (storico versionato); le regole sono coperte da test.
+     Meccanismo, delta misurato e snapshot per categoria: `docs/CATEGORY_COVERAGE.md`.
 5. **Aggregazione per categoria — che cosa esiste già e che cosa manca** (una baseline c'è già).
    - *Esiste.* `analysis/exploitation.py::forecast` (metodo `recent_rate`): per ogni categoria, il
      conteggio atteso di CVE che entrano in KEV nell'orizzonte = volume recente di pubblicazioni ×

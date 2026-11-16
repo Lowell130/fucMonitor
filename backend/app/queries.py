@@ -8,6 +8,7 @@ from datetime import date
 import duckdb
 
 from .config import Settings
+from . import state
 from .enrich import news as news_enrich
 from .taxonomy import mapping
 from .sources import SOURCES
@@ -220,23 +221,32 @@ def news_list(
     return {"total": total, "items": items}
 
 
-def news_trend(settings: Settings, by: str, days: int) -> dict:
-    """Distinct stories per day (publication day, UTC) by event type or by sector."""
+def news_trend(settings: Settings, by: str, days: int, exclude_per_cve: bool = True) -> dict:
+    """Distinct stories per day (publication day, UTC) by event type or by sector.
+
+    This is the attention view, so by default it excludes feeds that publish one entry per CVE
+    (advisory volume, not attention). Pass exclude_per_cve=False for the full view."""
     source = _news_source(settings)
     if source is None:
-        return {"by": by, "days": days, "items": []}
+        return {"by": by, "days": days, "items": [], "excluded_per_cve_feeds": []}
     sql, params = source
+    scope = sql
+    excluded: list[str] = []
+    if exclude_per_cve and _PER_CVE_FEEDS:
+        per_cve_sql = "(" + ", ".join("'" + f.replace("'", "''") + "'" for f in _PER_CVE_FEEDS) + ")"
+        scope = f"(SELECT * FROM {sql} WHERE feed_id NOT IN {per_cve_sql})"
+        excluded = list(_PER_CVE_FEEDS)
     if by == "sector":
-        inner = f"SELECT {_UTC_DAY} AS day, unnest(target_sectors) AS key, story_id FROM {sql}"
+        inner = f"SELECT {_UTC_DAY} AS day, unnest(target_sectors) AS key, story_id FROM {scope}"
     else:
-        inner = f"SELECT {_UTC_DAY} AS day, event_type AS key, story_id FROM {sql}"
+        inner = f"SELECT {_UTC_DAY} AS day, event_type AS key, story_id FROM {scope}"
     items = _rows(
         f"""SELECT day, key, count(DISTINCT story_id) AS stories FROM ({inner})
             WHERE key IS NOT NULL AND day > current_date - ?::INTEGER AND day <= current_date + 1
             GROUP BY 1, 2 ORDER BY 1, 2""",
         params + [days],
     )
-    return {"by": by, "days": days, "items": items}
+    return {"by": by, "days": days, "items": items, "excluded_per_cve_feeds": excluded}
 
 
 def news_daily(settings: Settings) -> dict:
@@ -267,20 +277,44 @@ _INCIDENT_EVENTS = (
 _PER_CVE_FEEDS = ("msrc_update_guide",)
 
 
+def _news_run_days(settings: Settings, window_days: int) -> tuple[dict, set]:
+    """From the operational job history: {day: failed_run_count} for days a news collection
+    failed, and the set of days a news collection ran at all. Lets a day with no stored items
+    be told apart as a quiet day (collection ran, nothing new) or a real collection failure."""
+    cutoff = date.today().toordinal() - window_days
+    failed: dict[str, int] = {}
+    ran: set[str] = set()
+    try:
+        runs = state.list_runs(settings.state_db, source="news", limit=5000)
+    except Exception:
+        return failed, ran
+    for run in runs:
+        started = (run.get("started_at") or "")[:10]
+        if len(started) != 10:
+            continue
+        try:
+            if date.fromisoformat(started).toordinal() < cutoff:
+                continue
+        except ValueError:
+            continue
+        ran.add(started)
+        if run.get("status") == "failed":
+            failed[started] = failed.get(started, 0) + 1
+    return failed, ran
+
+
 def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, seed: int = 1) -> dict:
-    """Measurement of the news labels, for sampling and quality control. Read-only.
+    """Quality control for the news labels, read-only. Nothing here feeds the model.
 
-    Keeps three counts distinct and never conflates them:
-      - articles: raw items stored (one row per feed entry);
-      - stories: distinct story groups *within a language* (cross-language duplicates are a known,
-        unmeasured gap — the same event in IT and EN is still two stories);
-      - official_source_stories: stories carrying at least one item from a primary/official feed —
-        reported by an authoritative source, NOT an independently verified incident;
-      - incident_event_stories: stories whose label is an incident type (also reports, not verified).
-
-    Also reports within-language duplication, per-feed amplification, collection gaps (silent feeds
-    and days with no items), and a reproducible seeded sample of items with their labels so a human
-    can measure the label error rate and spot duplicates. No value here feeds the model.
+    Keeps the advisories whole but splits them into three lenses that must not be conflated:
+      - technical_advisories: items from primary/official advisory feeds (CISA, vendor PSIRTs, MSRC…);
+      - editorial_attention: items from specialist and general media (attention, not fact);
+      - incident_reports: stories labelled as an incident type — a cross-cut over both, and still
+        *reported*, never an independently verified incident.
+    Reports within-language duplication, an attention count that excludes per-CVE feeds by default,
+    collection gaps split into real failures vs quiet days, and a reproducible seeded sample of
+    items for human review. The sample is only GENERATED here: label quality is not measured until
+    a human reviews it (see sample.reviewed / label_quality_measured).
     """
     source = _news_source(settings)
     if source is None:
@@ -289,6 +323,7 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
     day = _UTC_DAY
     win = [day + " > current_date - ?::INTEGER", day + " <= current_date + 1"]
     wsql = " AND ".join(win)
+    per_cve_sql = "(" + ", ".join("'" + f.replace("'", "''") + "'" for f in _PER_CVE_FEEDS) + ")"
 
     incidents = "(" + " OR ".join(f"event_type = '{e}'" for e in _INCIDENT_EVENTS) + ")"
     counts = _rows(
@@ -298,7 +333,10 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
                        AS official_source_stories,
                    count(DISTINCT CASE WHEN {incidents} THEN story_id END) AS incident_event_stories,
                    count(DISTINCT story_id) FILTER (WHERE story_feeds > 1) AS multi_feed_stories,
-                   count(*) FILTER (WHERE event_type IS NULL) AS unlabelled_items
+                   count(*) FILTER (WHERE event_type IS NULL) AS unlabelled_items,
+                   count(*) FILTER (WHERE feed_id NOT IN {per_cve_sql}) AS attention_articles,
+                   count(DISTINCT CASE WHEN feed_id NOT IN {per_cve_sql} THEN story_id END)
+                       AS attention_stories
             FROM {sql} WHERE {wsql}""",
         params + [window_days],
     )[0]
@@ -308,6 +346,32 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
     counts["multi_feed_story_share"] = (
         round(counts["multi_feed_stories"] / stories, 3) if stories else None
     )
+
+    # Three lenses on the same advisories (kept whole): technical vs editorial by source, plus the
+    # incident cross-cut. technical = primary feeds; editorial = specialist + general media.
+    by_kind = {
+        r["source_kind"]: r
+        for r in _rows(
+            f"""SELECT source_kind, count(*) AS articles, count(DISTINCT story_id) AS stories
+                FROM {sql} WHERE {wsql} GROUP BY source_kind""",
+            params + [window_days],
+        )
+    }
+
+    def _kind(*kinds: str) -> dict:
+        a = sum((by_kind.get(k) or {}).get("articles", 0) for k in kinds)
+        s = sum((by_kind.get(k) or {}).get("stories", 0) for k in kinds)
+        return {"articles": a, "stories": s}
+
+    streams = {
+        "technical_advisories": {**_kind("primary"),
+                                 "definition": "primary/official advisory feeds (CISA, CERTs, vendor PSIRTs, MSRC)"},
+        "editorial_attention": {**_kind("specialist", "general"),
+                                "definition": "specialist and general media: attention, not verified fact"},
+        "incident_reports": {"stories": counts["incident_event_stories"],
+                             "definition": "stories labelled as an incident type; cross-cut over both "
+                             "streams above; reported, not independently verified"},
+    }
 
     # Per-feed: how much each feed contributes, and whether its volume is advisory (per-CVE).
     per_feed = _rows(
@@ -322,30 +386,43 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
         row["last_day"] = row["last_day"].isoformat() if row["last_day"] else None
         row["per_cve_feed"] = row["feed_id"] in _PER_CVE_FEEDS
 
-    # Collection gaps: feeds configured but silent in the window, and days with zero items.
+    # Collection gaps: distinguish real failures from quiet days.
     try:
         configured = {f["id"]: f for f in news_src.load_feeds(settings)["feeds"]}
     except Exception:
         configured = {}
+    try:
+        feed_state = state.feed_states(settings.state_db)
+    except Exception:
+        feed_state = {}
     seen_feeds = {r["feed_id"] for r in per_feed}
-    silent_feeds = [
-        {"feed_id": fid, "feed_title": f.get("title"), "source_kind": f.get("kind")}
-        for fid, f in configured.items()
-        if fid not in seen_feeds
-    ]
+    silent_feeds = []
+    for fid, f in configured.items():
+        if fid in seen_feeds:
+            continue
+        fs = feed_state.get(fid, {})
+        failing = fs.get("last_status") == "failed" or (fs.get("consecutive_failures") or 0) > 0
+        silent_feeds.append({
+            "feed_id": fid, "feed_title": f.get("title"), "source_kind": f.get("kind"),
+            "failing": bool(failing), "consecutive_failures": fs.get("consecutive_failures") or 0,
+            "last_success_at": fs.get("last_success_at"),
+        })
     by_day = _rows(
         f"""SELECT {day} AS day, count(*) AS items FROM {sql} WHERE {wsql} GROUP BY 1""",
         params + [window_days],
     )
     present = {r["day"] for r in by_day}
-    zero_item_days = []
+    failed_days, ran_days = _news_run_days(settings, window_days)
+    quiet_days, no_run_days = [], []
     if present:
         lo, hi = min(present), max(present)
         d = lo
         while d <= hi:
-            if d not in present:
-                zero_item_days.append(d.isoformat())
+            iso = d.isoformat()
+            if d not in present and iso not in failed_days:
+                (quiet_days if iso in ran_days else no_run_days).append(iso)
             d = date.fromordinal(d.toordinal() + 1)
+    collection_failures = [{"day": k, "failed_runs": v} for k, v in sorted(failed_days.items())]
 
     # Reproducible sample for human QA: deterministic order keyed by (item_id, seed).
     sample_rows = _rows(
@@ -369,6 +446,16 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
             "official_source_stories": "stories with a primary/official-feed item: reported by an "
             "authority, not an independently verified incident",
             "incident_event_stories": "stories labelled as an incident type: reported, not verified",
+            "attention_articles": "articles excluding per-CVE feeds (the attention default)",
+            "attention_stories": "stories excluding per-CVE feeds (the attention default)",
+        },
+        "streams": streams,
+        "attention": {
+            "excludes_per_cve_feeds": list(_PER_CVE_FEEDS),
+            "articles": counts["attention_articles"],
+            "stories": counts["attention_stories"],
+            "note": "Attention counts exclude feeds that publish one entry per CVE (advisory volume, "
+            "not attention). The full view is available by including them.",
         },
         "verified_incident_count": None,
         "verified_incident_note": "Not produced from news alone: news gives reported information. A "
@@ -384,11 +471,23 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
         "per_feed": per_feed,
         "collection_gaps": {
             "silent_feeds": silent_feeds,
-            "zero_item_days": zero_item_days,
-            "note": "Silent = configured feed with no stored item in the window. Day granularity is "
-            "the stored-snapshot day; sub-day interruptions are not shown here.",
+            "collection_failures": collection_failures,
+            "quiet_days": quiet_days,
+            "no_run_days": no_run_days,
+            "note": "A day with no stored items is a quiet day only when a collection ran and none "
+            "failed; collection_failures are days a news run failed; no_run_days had no run recorded. "
+            "A silent feed is flagged 'failing' when its operational state shows failures.",
         },
-        "sample": {"seed": seed, "size": len(sample_rows), "items": sample_rows},
+        "sample": {
+            "seed": seed,
+            "size": len(sample_rows),
+            "reviewed": False,
+            "items": sample_rows,
+        },
+        "label_quality_measured": False,
+        "label_quality_note": "This sample is generated, not reviewed. The label error rate and "
+        "duplicate rate are NOT measured until a human labels this sample; do not report them as "
+        "measured before that review.",
     }
 
 
