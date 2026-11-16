@@ -1,6 +1,6 @@
 {
-  "version": "2026.11.14-1",
-  "note": "Keyword rules for news items, English and Italian. Patterns are regular expressions matched on lower-cased title + summary; \\b is added on the left automatically. Crude by design: they label, they do not understand. Bump 'version' on every change to the rules or to the story grouping, so derived data is rebuilt.",
+  "version": "2026.11.16-1",
+  "note": "Keyword rules for news items, English and Italian. Patterns are regular expressions matched on lower-cased title + summary; \\b is added on the left automatically. Crude by design: they label, they do not understand. Bump 'version' on every change to the rules or to the story grouping, so derived data is rebuilt. DEFINITION of exploitation: these patterns flag REAL exploitation reported (attacks observed in the wild, named actors exploiting, victims/compromise, known-exploited listing). They deliberately do NOT flag technical demonstrations / PoC / RCE demos (that is exploit availability, tracked separately by the exploit-repo sources), hypotheticals ('could/may be exploited', 'an attacker who successfully exploited'), suspicions ('suspects', 'reportedly') or negations ('disputes', 'no evidence'). Patterns are tuned for high precision against advisory boilerplate.",
   "event_types": [
     {
       "id": "hoax_disruption",
@@ -101,7 +101,9 @@
     "attivamente sfruttat",
     "sfruttat[aoie] in rete",
     "exploit in circolazione",
-    "attacchi in corso"
+    "attacchi in corso",
+    "exploit(ed|ing|s)?\\b.{0,40}?\\bto (infect|deploy|hijack|ransom|backdoor|drop)",
+    "(hackers|threat actors?) (?:have |has |had |are |is |been |recently )*exploit"
   ],
   "disclosure": [
     "vulnerabilit",

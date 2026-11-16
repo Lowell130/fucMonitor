@@ -226,6 +226,35 @@ def test_classification_rules(title, kind, cves, event, exploited, claim, sector
         "event_type": event, "exploitation_signal": exploited, "claim_status": claim, "target_sectors": sectors}
 
 
+@pytest.mark.parametrize(
+    "want, title, summary",
+    [
+        # exploitation_signal = REAL exploitation reported (observed attacks), NOT demos/hypotheses.
+        # Recovered real cases (rules 2026.11.16-1), verified 0 false positives on the live corpus:
+        (True, "Hackers Exploit N-central Flaws to Infect 21 Servers", ""),
+        (True, "Attackers Exploit AhsayCBS Flaws to Deploy a Python Backdoor", ""),
+        (True, "Hackers Exploit PHP2Shell Flaws in Check Point Gateways to Deploy a Backdoor", ""),
+        (True, "Check Point warns of zero-day flaw", "hackers have been exploiting it to gain root"),
+        (True, "Railway breach", "hackers exploited vulnerabilities in its infrastructure to steal secrets"),
+        # Must STAY false: demonstrations, suspicions, negations, and advisory hypotheticals.
+        (False, "Telegram Widgets Hit by RCE Demos",
+         "Kaspersky suspects exploitation to deliver WebRAT, researchers demo RCE, Durov disputes"),
+        (False, "fortisoc flaw", "may allow an authenticated attacker to execute unauthorized commands"),
+        (False, "Google warns fully-automated AI attacks are coming soon",
+         "threat actors are now relying on frameworks to automate vulnerability discovery and exploitation"),
+        (False, "Cisco ISE Authorization Bypass",
+         "An attacker could exploit this vulnerability to execute arbitrary commands"),
+        (False, "Critical Red Hat Quay Vulnerability",
+         "Attackers could exploit a Red Hat Quay flaw to steal private container images"),
+        (False, "Windows Kernel EoP", "An attacker who successfully exploited the vulnerability could gain privileges"),
+    ],
+)
+def test_exploitation_signal_real_vs_hypothetical(want, title, summary):
+    """exploitation_signal means real exploitation reported, not technical demonstrations,
+    suspicions, negations or 'could be exploited' advisory boilerplate."""
+    assert enrich.classify(title, summary, "specialist", [])["exploitation_signal"] is want
+
+
 def _item(item_id, feed, title, hours=0, language="en", cves=()):
     when = datetime(2026, 11, 10, tzinfo=timezone.utc) + __import__("datetime").timedelta(hours=hours)
     return {"item_id": item_id, "feed_id": feed, "title": title, "language": language, "when": when,

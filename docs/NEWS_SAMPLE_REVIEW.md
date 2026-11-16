@@ -82,10 +82,61 @@ più si può confermare l'esistenza di un CVE o l'ingresso in KEV incrociando fo
 - L'endpoint resta `label_quality_measured: false` per default: ogni campione estratto dall'API è
   *non revisionato* finché qualcuno non lo etichetta. Questa pagina documenta la revisione fatta.
 
-## Prossimo passo suggerito (non ancora fatto)
+## Definizione di `exploitation_signal` (fissata prima di correggere)
 
-- Revisione mirata con `sample_exclude_per_cve=true` per stimare l'accordo sui **casi a testo libero**
-  (dove stanno gli errori), con più elementi e, idealmente, un secondo revisore.
-- Correggere le regole più deboli emerse (sovra-innesco di `vulnerability_disclosure` su pezzi di
-  tendenza; estrazione CVE quando il sommario non lo contiene) — da fare come modifica alle regole,
-  versionata e testata, **senza** toccare il candidato né il registro prospettico.
+`exploitation_signal = true` **solo** quando la notizia riporta **sfruttamento reale osservato**:
+attacchi in corso/nel mondo reale, attori nominati che sfruttano, vittime/compromissioni, o
+inserimento in un catalogo di «known-exploited». È **false** per: **dimostrazioni tecniche / PoC /
+demo RCE** (è *disponibilità di exploit*, tracciata a parte dalle fonti exploit-repo), **ipotesi**
+(«could/may be exploited», «an attacker who successfully exploited»), **sospetti** («suspects»,
+«reportedly») e **negazioni** («disputes», «no evidence»). I due significati — sfruttamento reale vs
+dimostrazione tecnica — restano **separati**.
+
+## Riesame dei quattro scostamenti contro la definizione
+
+Nessuno dei quattro è un errore confermato di `exploitation_signal`:
+
+- #1 Telegram: **sospetto + demo + negazione** → `false` corretto.
+- #2 AI attacks: capacità generica futura, nessun evento osservato → `false` corretto (l'errore è
+  solo di `event_type`, fuori ambito).
+- #3 Fortinet fortisoc: **ipotetico** («may allow») → `false` corretto.
+- #4 CSIRT N-Able: **divulgazione di catene di exploit** (CVD), nessun attacco osservato nel testo →
+  `false` difendibile.
+
+I miei «mancati» precedenti confondevano demo/sospetti/divulgazione con sfruttamento reale: è
+proprio la distinzione richiesta.
+
+## Errore confermato e correzione (regole `2026.11.16-1`)
+
+In verifica è emerso un errore reale **fuori dai quattro**: TheHackerNews «Hackers Exploit N-central
+Flaws to **Infect** 21 Servers» era `false` pur riportando compromissioni reali. Le regole
+`exploitation` esistenti erano già ad alta precisione (frasi di sfruttamento reale), ma non
+coprivano due fraseggi giornalistici. Aggiunti due pattern:
+
+- `exploit… to (infect|deploy|hijack|ransom|backdoor|drop)` — sfruttamento che porta a un esito
+  concreto d'attacco;
+- `(hackers|threat actors?) (have|are|been|…)* exploit` — attore nominato che sfrutta (esclude
+  «an attacker **could** exploit» degli advisory).
+
+### Misura (corpus reale, 4000 item del 16 novembre)
+
+- **Casi recuperati: 7**, tutti sfruttamento reale confermato (N-central ×2, PHP2Shell, Check Point
+  zero-day, AhsayCBS, Railway, Qubole).
+- **Nuovi falsi positivi: 0** sull'intero corpus.
+- **Controllo negativo**: 4 fraseggi ipotetici/dimostrativi («an attacker could exploit…», «hackers
+  could exploit…», «demo RCE; suspects exploitation…», «may allow…») → nessuno innescato.
+- **Verifica su campione distinto**: la coppia di pattern è stata derivata dall'errore confermato e
+  dalla definizione; sulla metà di **verifica** del corpus (split per hash dell'id, non usata per
+  rifinire) i ribaltamenti sono 6, tutti veri positivi, 0 falsi positivi.
+- I quattro scostamenti riesaminati restano correttamente `false`.
+- Coperto da test (`test_exploitation_signal_real_vs_hypothetical`).
+
+## Limiti dichiarati
+
+- Questa è una **revisione delle etichette**, **non** una verifica dei fatti: conferma che la regola
+  concorda col testo, non che il fatto riportato sia vero.
+- **Non** è una modifica del modello predittivo: tocca solo le etichette derivate delle notizie, non
+  il candidato CVE né il registro prospettico né la baseline per categoria.
+- Resta un difetto noto non corretto qui (fuori ambito `exploitation_signal`): sovra-innesco di
+  `event_type=vulnerability_disclosure` su pezzi di tendenza (#2) ed estrazione CVE quando il
+  sommario non lo contiene (#3) — eventuale correzione futura, versionata e testata.
