@@ -306,10 +306,14 @@ def news_trend(
     by: str = Query("event_type", pattern="^(event_type|sector)$"),
     days: int = Query(30, ge=1, le=365),
     exclude_per_cve: bool = Query(True),
+    press_only: bool = Query(False),
 ) -> dict:
-    """Distinct stories per publication day (the attention view). Labels come from keyword rules.
-    By default excludes feeds that publish one entry per CVE; pass exclude_per_cve=false for all."""
-    return queries.news_trend(get_settings(), by, days, exclude_per_cve=exclude_per_cve)
+    """Distinct stories per publication day. Labels come from keyword rules. Two distinct scopes:
+    default 'all_except_per_cve' (every source minus per-CVE feeds, official advisories included),
+    or press_only=true for 'press' (specialist and general media only). exclude_per_cve=false gives
+    the full unfiltered view."""
+    return queries.news_trend(get_settings(), by, days, exclude_per_cve=exclude_per_cve,
+                              press_only=press_only)
 
 
 @app.post("/api/v1/news/relabel", tags=["pipeline"])

@@ -181,8 +181,10 @@ Consolidamento e valutazione prospettica (fatto):
      Meccanismo, delta misurato e snapshot per categoria: `docs/CATEGORY_COVERAGE.md`.
 5. **Aggregazione per categoria — che cosa esiste già e che cosa manca** (una baseline c'è già).
    - *Esiste.* `analysis/exploitation.py::forecast` (metodo `recent_rate`): per ogni categoria, il
-     conteggio atteso di CVE che entrano in KEV nell'orizzonte = volume recente di pubblicazioni ×
-     tasso storico censurato per orizzonte, con intervallo di Byar/Poisson. È **descrittiva**, non un
+     conteggio atteso = `recent_events × (horizon / lookback_days)`, dove `recent_events` = CVE della
+     categoria entrate in KEV negli ultimi `lookback_days` (365); intervallo di Byar/Poisson sul
+     conteggio. Volume di pubblicazioni e quota storica sono contesto, non input (il metodo «volume ×
+     quota» è stato scartato). Dettagli: `docs/CATEGORY_COVERAGE.md`. È **descrittiva**, non un
      modello, calcolata uguale ogni volta; è la baseline che l'Osservatorio mostra come
      `category_forecast` e che qualsiasi modello deve battere. La previsione per categoria **non è
      scoperta**: manca semmai di *validazione prospettica* propria (oggi ha solo il backtest).

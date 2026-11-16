@@ -428,12 +428,18 @@ def page_news() -> None:
         t("news.trend_show"), list(names), default=[k for k in names if k not in quiet],
         format_func=lambda k: names.get(k, k),
     )
-    exclude_per_cve = st.checkbox(t("news.exclude_per_cve"), value=True)
-    trend_data = get("/api/v1/news/trend", by=by, days=days,
-                     exclude_per_cve="true" if exclude_per_cve else "false")
+    scope = st.radio(
+        t("news.scope"), ["all_except_per_cve", "press", "all"],
+        format_func=lambda k: t(f"news.scope_{k}"), horizontal=True,
+    )
+    params = {"by": by, "days": days}
+    if scope == "press":
+        params["press_only"] = "true"
+    elif scope == "all":
+        params["exclude_per_cve"] = "false"
+    trend_data = get("/api/v1/news/trend", **params)
     dropped = trend_data.get("excluded_per_cve_feeds") or []
-    if exclude_per_cve and dropped:
-        st.caption(t("news.exclude_per_cve_on", feeds=", ".join(dropped)))
+    st.caption(t(f"news.scope_help_{scope}", feeds=", ".join(dropped) or "—"))
     trend = [r for r in trend_data["items"] if r["key"] in shown]
     if trend:
         frame = pd.DataFrame(trend)

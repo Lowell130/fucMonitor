@@ -14,10 +14,19 @@ costruzione** (non sono una partizione e non sommano ai totali).
 - **Denominatore** = tutte le CVE catalogate della categoria.
 - **Quota KEV** (`kev_share`) = numeratore / denominatore. È la percentuale che l'osservatorio mostra
   come tasso di sfruttamento confermato per categoria; il denominatore è reso esplicito accanto.
-- **Baseline aggregata per categoria** (`analysis/exploitation.py`, metodo `recent_rate`):
-  conteggio atteso di ingressi KEV nell'orizzonte = **volume recente di pubblicazioni della
-  categoria × tasso storico censurato per orizzonte**, con intervallo di Byar/Poisson. È
-  descrittiva, non un modello.
+- **Baseline aggregata per categoria** (`analysis/exploitation.py::forecast`, metodo `recent_rate`).
+  Formula effettivamente eseguita (verificata sul codice):
+
+  `expected(categoria) = recent_events × (horizon / lookback_days)`
+
+  dove `recent_events` = numero di CVE della categoria **entrate in KEV** (`exploited_date` non nullo)
+  negli ultimi `lookback_days` (default **365**); `horizon` ∈ {7, 30, 90}; l'intervallo è di
+  Byar/Poisson **sul conteggio** `recent_events`. **Non** entra alcun tasso né volume di pubblicazioni:
+  il volume recente di CVE (`recent_cves`) e la quota storica (`share`) sono riportati come
+  **contesto, non come input**. Il metodo alternativo «volume di pubblicazioni × quota storica» è
+  stato **scartato** dal backtest (contava solo le CVE pubblicate nella finestra e mancava le più
+  vecchie, gran parte dello sfruttamento). È descrittiva, non un modello; corre circa 16% sotto il
+  reale perché uno stimatore a scorrimento insegue in ritardo un trend in crescita.
 
 ## Effetto di una nuova assegnazione
 
@@ -29,9 +38,10 @@ per quella categoria:
 - la **quota KEV** si muove nella direzione del termine dominante: siccome di norma entrano più CVE
   totali che CVE-KEV, la quota può **scendere leggermente** anche mentre il numeratore cresce — è
   l'effetto atteso di una copertura più completa, non un peggioramento;
-- la **baseline `recent_rate`** cambia perché salgono sia il *volume recente* sia il *conteggio
-  storico di eventi KEV* della categoria: il conteggio atteso si **alza di poco** per le categorie
-  interessate. È una **correzione di completezza**, non un cambio di modello.
+- la **baseline `recent_rate`** sale **solo se** tra le CVE agganciate ce ne sono di **entrate in KEV
+  negli ultimi `lookback_days`** (quelle contano in `recent_events`); CVE totali o pubblicazioni
+  recenti **non** la muovono, perché non sono input. Per le categorie interessate il conteggio atteso
+  si **alza di poco**: è una **correzione di completezza**, non un cambio di modello.
 
 Questo tocca **solo** le misure aggregate per categoria. Il **modello CVE sperimentale** (EPSS+età)
 e il **registro prospettico** non sono toccati: non usano la mappatura delle categorie.

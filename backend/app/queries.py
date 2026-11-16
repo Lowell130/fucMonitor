@@ -221,32 +221,45 @@ def news_list(
     return {"total": total, "items": items}
 
 
-def news_trend(settings: Settings, by: str, days: int, exclude_per_cve: bool = True) -> dict:
+def news_trend(settings: Settings, by: str, days: int, exclude_per_cve: bool = True,
+               press_only: bool = False) -> dict:
     """Distinct stories per day (publication day, UTC) by event type or by sector.
 
-    This is the attention view, so by default it excludes feeds that publish one entry per CVE
-    (advisory volume, not attention). Pass exclude_per_cve=False for the full view."""
+    Two different populations, kept distinct and never conflated:
+      - scope 'all_except_per_cve' (default): every source — official advisories included — minus
+        feeds that publish one entry per CVE (advisory volume, not attention);
+      - scope 'press': specialist and general MEDIA only (press attention), which excludes the
+        official advisory feeds entirely. press_only=True selects this; per-CVE feeds are primary
+        advisories, so they are outside the press scope anyway.
+    Pass exclude_per_cve=False (with press_only=False) for the full, unfiltered view."""
     source = _news_source(settings)
     if source is None:
-        return {"by": by, "days": days, "items": [], "excluded_per_cve_feeds": []}
+        return {"by": by, "days": days, "items": [], "scope": "press" if press_only else None,
+                "excluded_per_cve_feeds": []}
     sql, params = source
-    scope = sql
-    excluded: list[str] = []
-    if exclude_per_cve and _PER_CVE_FEEDS:
-        per_cve_sql = "(" + ", ".join("'" + f.replace("'", "''") + "'" for f in _PER_CVE_FEEDS) + ")"
-        scope = f"(SELECT * FROM {sql} WHERE feed_id NOT IN {per_cve_sql})"
-        excluded = list(_PER_CVE_FEEDS)
-    if by == "sector":
-        inner = f"SELECT {_UTC_DAY} AS day, unnest(target_sectors) AS key, story_id FROM {scope}"
+    filters, excluded = [], []
+    if press_only:
+        filters.append("source_kind IN ('specialist', 'general')")
+        scope = "press"
     else:
-        inner = f"SELECT {_UTC_DAY} AS day, event_type AS key, story_id FROM {scope}"
+        scope = "all" if not exclude_per_cve else "all_except_per_cve"
+        if exclude_per_cve and _PER_CVE_FEEDS:
+            per_cve_sql = "(" + ", ".join("'" + f.replace("'", "''") + "'" for f in _PER_CVE_FEEDS) + ")"
+            filters.append(f"feed_id NOT IN {per_cve_sql}")
+            excluded = list(_PER_CVE_FEEDS)
+    inner_src = sql if not filters else f"(SELECT * FROM {sql} WHERE {' AND '.join(filters)})"
+    if by == "sector":
+        inner = f"SELECT {_UTC_DAY} AS day, unnest(target_sectors) AS key, story_id FROM {inner_src}"
+    else:
+        inner = f"SELECT {_UTC_DAY} AS day, event_type AS key, story_id FROM {inner_src}"
     items = _rows(
         f"""SELECT day, key, count(DISTINCT story_id) AS stories FROM ({inner})
             WHERE key IS NOT NULL AND day > current_date - ?::INTEGER AND day <= current_date + 1
             GROUP BY 1, 2 ORDER BY 1, 2""",
         params + [days],
     )
-    return {"by": by, "days": days, "items": items, "excluded_per_cve_feeds": excluded}
+    return {"by": by, "days": days, "scope": scope, "items": items,
+            "excluded_per_cve_feeds": excluded}
 
 
 def news_daily(settings: Settings) -> dict:
@@ -426,7 +439,7 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
 
     # Reproducible sample for human QA: deterministic order keyed by (item_id, seed).
     sample_rows = _rows(
-        f"""SELECT item_id, feed_id, language, title, link, cve_ids,
+        f"""SELECT item_id, feed_id, source_kind, language, title, summary, link, cve_ids,
                    event_type, exploitation_signal, claim_status, target_sectors,
                    story_id, story_feeds
             FROM {sql} WHERE {wsql}
@@ -451,11 +464,20 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
         },
         "streams": streams,
         "attention": {
+            "scope": "all_except_per_cve",
             "excludes_per_cve_feeds": list(_PER_CVE_FEEDS),
             "articles": counts["attention_articles"],
             "stories": counts["attention_stories"],
-            "note": "Attention counts exclude feeds that publish one entry per CVE (advisory volume, "
-            "not attention). The full view is available by including them.",
+            "note": "ALL sources (official advisories included) minus per-CVE feeds. This is NOT the "
+            "press view: it still contains official advisory feeds. For press only (specialist and "
+            "general media), see streams.editorial_attention.",
+        },
+        "press": {
+            "scope": "specialist_and_general_media",
+            "articles": streams["editorial_attention"]["articles"],
+            "stories": streams["editorial_attention"]["stories"],
+            "note": "Specialist and general MEDIA only (press attention); excludes all official "
+            "advisory feeds. Distinct from attention (all_except_per_cve), which keeps them.",
         },
         "verified_incident_count": None,
         "verified_incident_note": "Not produced from news alone: news gives reported information. A "
@@ -475,8 +497,10 @@ def news_quality(settings: Settings, window_days: int = 30, sample: int = 40, se
             "quiet_days": quiet_days,
             "no_run_days": no_run_days,
             "note": "A day with no stored items is a quiet day only when a collection ran and none "
-            "failed; collection_failures are days a news run failed; no_run_days had no run recorded. "
-            "A silent feed is flagged 'failing' when its operational state shows failures.",
+            "failed; collection_failures are days a news run failed; no_run_days had no run recorded "
+            "at all — the cause is not determined here and is NOT attributed (could be the app off, a "
+            "scheduler gap, or other). A silent feed is flagged 'failing' only when its operational "
+            "state shows failures.",
         },
         "sample": {
             "seed": seed,

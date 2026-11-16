@@ -383,17 +383,26 @@ def test_attention_trend_excludes_per_cve_feeds(settings, tmp_path, monkeypatch)
 
     full = queries.news_trend(settings, by="event_type", days=365, exclude_per_cve=False)
     attention = queries.news_trend(settings, by="event_type", days=365, exclude_per_cve=True)
-    assert full["excluded_per_cve_feeds"] == []
+    press = queries.news_trend(settings, by="event_type", days=365, press_only=True)
+    assert full["scope"] == "all" and full["excluded_per_cve_feeds"] == []
+    assert attention["scope"] == "all_except_per_cve"
     assert attention["excluded_per_cve_feeds"] == ["msrc_update_guide"]
+    assert press["scope"] == "press"
     full_total = sum(r["stories"] for r in full["items"])
     att_total = sum(r["stories"] for r in attention["items"])
+    press_total = sum(r["stories"] for r in press["items"])
     assert full_total > att_total  # the two MSRC per-CVE stories are dropped from attention
-    # the editorial ransomware story survives in the attention view
-    assert any(r["key"] == "ransomware" for r in attention["items"])
+    # press is narrower than all-except-per-CVE: MSRC (primary) is in attention's scope, not press
+    assert att_total >= press_total
+    assert any(r["key"] == "ransomware" for r in press["items"])  # editorial story is press
 
     q = queries.news_quality(settings, window_days=365, sample=0)
     assert q["streams"]["technical_advisories"]["stories"] == 2  # the two MSRC advisories
-    assert q["attention"]["stories"] == 1  # only the editorial story remains
+    # attention (all except per-CVE) keeps official non-per-CVE advisories; here MSRC is the only
+    # primary feed and it is per-CVE, so attention == the single editorial story
+    assert q["attention"]["scope"] == "all_except_per_cve" and q["attention"]["stories"] == 1
+    # press is the editorial lens explicitly, distinct from attention
+    assert q["press"]["stories"] == 1 and q["press"]["scope"] == "specialist_and_general_media"
 
 
 def test_news_quality_endpoint(news):
