@@ -247,6 +247,19 @@ def test_classification_rules(title, kind, cves, event, exploited, claim, sector
         (False, "Critical Red Hat Quay Vulnerability",
          "Attackers could exploit a Red Hat Quay flaw to steal private container images"),
         (False, "Windows Kernel EoP", "An attacker who successfully exploited the vulnerability could gain privileges"),
+        # independent verification found these false positives (context: negation / demo / lab /
+        # availability) — they must be FALSE:
+        (False, "Vendor statement", "Our investigation found no active exploitation of this vulnerability"),
+        (False, "Advisory", "There is no evidence of exploitation in the wild"),
+        (False, "Researchers show attack", "Researchers demonstrated a zero-day exploit in the lab; no attacks observed"),
+        (False, "Conference talk", "In a live demo, hackers exploit the bug to pop a shell"),
+        (False, "Exploit disponibile", "È disponibile un exploit in circolazione, ma non risultano attacchi osservati"),
+        (False, "Advisory update", "Active exploitation has not been observed at this time"),
+        # but a real attack must STAY TRUE even when the article also mentions a demo or a negation
+        # (no global veto):
+        (True, "Zero-day under attack", "the flaw is actively exploited; a PoC was also published later"),
+        (True, "Real attack, vendor denial", "The bug is being exploited in the wild, though the vendor disputed early reports"),
+        (True, "Exploited, no ransomware", "Hackers exploited the flaw to deploy a backdoor but did not deploy ransomware"),
     ],
 )
 def test_exploitation_signal_real_vs_hypothetical(want, title, summary):

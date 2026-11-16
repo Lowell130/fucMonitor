@@ -78,10 +78,55 @@ def load_rules() -> dict:
     }
 
 
+# Context guards for exploitation_signal. Applied per MATCH, near the matched phrase only, never
+# to the whole article: a real attack must not be hidden because the piece also mentions a demo or a
+# negation somewhere else. A match is dropped when it is directly negated ("no active exploitation",
+# "exploitation not observed"), or presented as a demonstration / proof-of-concept / lab test next to
+# the phrase. If any other match is clean, exploitation_signal stays true.
+# Negation that binds to the exploitation phrase: either directly adjacent ("no active
+# exploitation", "not being exploited") or evidential ("no evidence of exploitation"). A bare "no"
+# on some other noun nearby ("no ransomware, hackers exploited ...") must NOT suppress a real attack.
+_NEG_ADJ = re.compile(r"\b(no|not|without|non|nessun\w*|senza)\s*$")
+_NEG_EVID = re.compile(
+    r"\b(no|not|non)\b[^.;!?]{0,18}"
+    r"\b(evidence|sign|signs|indication|indications|proof|trace|cases?|prova|prove|indizi?|segnali?)"
+    r"\b[^.;!?]{0,8}$"
+)
+# Negated observation on the right: "active exploitation has not been observed".
+_NEG_OBS_RIGHT = re.compile(
+    r"^[^.;!?]{0,30}?\b(not|no|never|non|mai)\b[^.;!?]{0,18}"
+    r"\b(observ\w+|seen|detect\w+|confirm\w+|osservat\w*|rilevat\w*|confermat\w*)"
+)
+# Demonstration / proof-of-concept / lab test next to the phrase (exploit availability, not an
+# observed attack). 'sandbox' is deliberately absent: "sandbox-evading backdoor" is a real attack.
+_DEMO_NEAR = re.compile(
+    r"\b(demo|demos|demonstrat\w+|proof[- ]of[- ]concept|poc|laborator\w+|dimostr\w+|"
+    r"simulat\w+|in (?:a |the )?lab)\b"
+)
+
+
+def _exploitation_is_real(pattern: re.Pattern, text: str) -> bool:
+    """True if the text reports real observed exploitation, judged per match with local context so
+    a nearby demo or negation suppresses only that match, not the whole article."""
+    for m in pattern.finditer(text):
+        # windows stay within the matched phrase's own clause: a demo or negation in a neighbouring
+        # clause ("...actively exploited; a PoC was also released") must not suppress this match.
+        left = re.split(r"[.;!?]", text[max(0, m.start() - 24):m.start()])[-1]
+        right = re.split(r"[.;!?]", text[m.end():m.end() + 30])[0]
+        if _NEG_ADJ.search(left) or _NEG_EVID.search(left):  # "no active exploitation" / "no sign of"
+            continue
+        if _NEG_OBS_RIGHT.search(right):      # "active exploitation ... not observed"
+            continue
+        if _DEMO_NEAR.search(left) or _DEMO_NEAR.search(right):  # demonstrated / PoC / in a lab
+            continue
+        return True
+    return False
+
+
 def classify(title: str, summary: str, source_kind: str, cve_ids: list[str]) -> dict:
     rules = load_rules()
     text = f"{title} {summary}".casefold()
-    exploited = bool(rules["exploitation"].search(text))
+    exploited = _exploitation_is_real(rules["exploitation"], text)
 
     event = next((eid for eid, pattern in rules["event_types"] if pattern.search(text)), None)
     if event is None:
