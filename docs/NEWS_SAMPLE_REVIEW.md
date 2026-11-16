@@ -129,6 +129,9 @@ coprivano due fraseggi giornalistici. Aggiunti due pattern:
   dalla definizione; sulla metà di **verifica** del corpus (split per hash dell'id, non usata per
   rifinire) i ribaltamenti sono 6, tutti veri positivi, 0 falsi positivi.
 - I quattro scostamenti riesaminati restano correttamente `false`.
+- **Conferma dal vivo dopo il relabel** (intero DB, 5520 item): esattamente **7** item sono
+  attribuibili ai nuovi pattern (match nuovo e non vecchio) — i 7 veri positivi — e **0** item
+  risultano `exploitation_signal=true` senza corrispondere ad alcun pattern (nessuna fuga).
 - Coperto da test (`test_exploitation_signal_real_vs_hypothetical`).
 
 ## Limiti dichiarati
