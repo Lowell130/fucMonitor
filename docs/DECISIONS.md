@@ -148,7 +148,23 @@ Consolidamento e valutazione prospettica (fatto):
 - **Notizie**: si lascia accumulare lo storico (sonda `news-readiness`); nessuna valutazione del
   contributo finché non è pronto.
 3. Notizie (contenuto app): raggruppamento multilingue e verifica a campione della qualità delle regole.
-4. Revisione manuale della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
+4. Revisione della coda delle categorie, a partire dai prodotti dietro alle CVE sfruttate.
+   - *Fatto, primo giro (regole, versione `2026.11.16-1`).* Sulla coda reale, i prodotti non
+     classificati con più peso sono quelli dietro CVE **già in KEV**: alla revisione risultavano 280
+     CVE KEV su 1779 senza categoria (16%) e **zero** assegnazioni manuali. Aggiunte regole mirate per
+     le famiglie emerse: F5 (BIG-IQ/Enterprise Manager/Traffix), Cisco (ISE→identity, ASYNCOS→security
+     appliance, UCM→collaboration, SD-WAN→network edge), file-transfer/condivisione (Accellion, CrushFTP,
+     Gladinet), mail server (SmarterMail), storage (Oracle ZFS/StorageTek, IBM Storwize), agent di
+     gestione Microsoft (System Center, OMI, Log Analytics, Container Monitoring→remote management),
+     più JetBrains TeamCity, LiteLLM, SysAid, Red Hat Fuse/CodeReady, Mitel, 3DS Delmia Apriso,
+     Telerik, Gigabyte. **Corretto un bug reale**: `dnnsoftware:dotnetnuke` sfuggiva perché la regola
+     era `^dotnetnuke` (ancorata) mentre il vendor è `dnnsoftware`. Scelta documentata: le piattaforme
+     software di comunicazione unificata (UCM, MiCollab) vanno in `mail_collaboration`, accanto a
+     Teams/Zoom/Mattermost; i telefoni/edge (Avaya, Polycom) restano in `router_network_edge` com'erano.
+   - *Effetto sulle misure (non sul candidato).* Cambia solo l'assegnazione prodotto→categoria, quindi
+     i **denominatori per categoria** dell'osservatorio e la baseline `recent_rate` per categoria; **non**
+     tocca il modello CVE sperimentale né il registro prospettico. Le assegnazioni restano riproducibili
+     dalle regole + eventuali decisioni manuali (storico versionato); le regole sono coperte da test.
 5. **Aggregazione per categoria — che cosa esiste già e che cosa manca** (una baseline c'è già).
    - *Esiste.* `analysis/exploitation.py::forecast` (metodo `recent_rate`): per ogni categoria, il
      conteggio atteso di CVE che entrano in KEV nell'orizzonte = volume recente di pubblicazioni ×

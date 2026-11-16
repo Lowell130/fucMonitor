@@ -1,5 +1,5 @@
 {
-  "version": "2026.11.14-2",
+  "version": "2026.11.16-1",
   "note": "Product to technology-category rules. Each pattern is a regular expression matched against 'vendor:product' as NVD writes it (lower case, underscores). Rules are tried in order and the first match wins, so put the specific ones first. Hand-made assignments always win over these. Bump 'version' on every change: the derived table is rebuilt from scratch when it changes.",
   "rules": [
     {
@@ -75,7 +75,9 @@
         "^arcadyan",
         "^actiontec",
         "^calix",
-        "^adtran"
+        "^adtran",
+        "sd-wan",
+        "velocloud"
       ]
     },
     {
@@ -129,6 +131,9 @@
         "antivirus",
         "endpoint_(protection|security)",
         "^citrix:netscaler",
+        "^f5:(big-iq|enterprise_manager|traffix)",
+        "^paloaltonetworks:expedition",
+        "^cisco:asyncos",
         "^trendmicro:",
         "^avast",
         "^avg:",
@@ -174,7 +179,10 @@
         "^slack:",
         "webmail",
         "^openxchange",
-        "^open-xchange"
+        "^open-xchange",
+        "smartermail",
+        "^mitel:",
+        "unified_communications"
       ]
     },
     {
@@ -264,7 +272,10 @@
         "^bolt",
         "^pimcore",
         "^shopware",
-        "^oscommerce"
+        "^oscommerce",
+        "^dnnsoftware",
+        "^telerik:",
+        "^progress:telerik"
       ]
     },
     {
@@ -355,7 +366,9 @@
         "^action1",
         "^ninjarmm",
         "^atera",
-        "^syncro"
+        "^syncro",
+        "^simple-?help",
+        "^microsoft:(system_center|log_analytics_agent|open_management_infrastructure|container_monitoring)"
       ]
     },
     {
@@ -399,7 +412,9 @@
         "^iomega",
         "^buffalo",
         "^seagate",
-        "^lacie"
+        "^lacie",
+        "^oracle:(zfs_storage|storagetek)",
+        "^ibm:storwize"
       ]
     },
     {
@@ -430,7 +445,8 @@
         "^1password",
         "password_manager",
         "^duo:",
-        "multi-?factor"
+        "multi-?factor",
+        "^cisco:identity_services_engine"
       ]
     },
     {
@@ -481,7 +497,9 @@
         "^epson:",
         "^lexmark:",
         "^xerox:",
-        "printer"
+        "printer",
+        "^3ds:(delmia|apriso)",
+        "delmia_apriso"
       ]
     },
     {
@@ -532,7 +550,14 @@
         "^streamlit",
         "^gradio",
         "^huggingface",
-        "^label_studio"
+        "^label_studio",
+        "^jetbrains:teamcity",
+        "^litellm:",
+        "^sysaid:",
+        "^redhat:fuse",
+        "^accellion:",
+        "^crushftp",
+        "^gladinet:"
       ]
     },
     {
@@ -606,7 +631,8 @@
         "^microsoft:(windows_subsystem|wsl|powershell|hyper-v_server)",
         "^centos",
         "^scientificlinux",
-        "^amazon:(linux|amazon_linux)"
+        "^amazon:(linux|amazon_linux)",
+        "^redhat:codeready"
       ]
     },
     {
@@ -667,7 +693,8 @@
         "^kde:",
         "^mozilla:nss",
         "^zoom:",
-        "^slack:"
+        "^slack:",
+        "^gigabyte:(aorus|oc_guru|xtreme|app_center)"
       ]
     }
   ]
