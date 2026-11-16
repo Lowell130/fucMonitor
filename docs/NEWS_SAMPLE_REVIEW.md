@@ -35,6 +35,28 @@ deboli sul **testo libero** (stampa e advisory senza CVE nel sommario), dove sia
 (#2 falso disclosure) sia sotto-innescano (#1 exploitation mancato, #3 disclosure mancato). Nessun
 Paese o attore viene estratto, per scelta, quindi non è stato valutato.
 
+### Secondo passaggio mirato (casi a testo libero, `sample_exclude_per_cve=true`)
+
+Per misurare dove stanno davvero gli errori, revisione di 22 elementi **non-per-CVE** (seed=1).
+**18/22 corretti (~82%), 4 scostamenti.** Difetto ricorrente e più rilevante: **segnale di
+exploitation mancato** su testo libero.
+
+1. SecurityWeek, "Telegram ... RCE Demos" — `other`/expl=false; testo = exploitation sospetta e demo
+   RCE → **exploitation mancato**.
+2. BleepingComputer, "AI attacks coming soon" — `vulnerability_disclosure`; è tendenza → `other`.
+3. Fortinet PSIRT, "...in fortisoc" — `other`, CVE non estratto → dovrebbe essere `vulnerability_disclosure`.
+4. CSIRT Italia, "N-Able: due catene di exploit ... zero-day in N-central" — `vulnerability_disclosure`/
+   expl=false; descrive **catene di exploit per zero-day** → **exploitation mancato** (grave).
+
+Funzionano bene, invece: ingressi KEV → `vulnerability_exploitation`+expl (CISA #5, #17), outage
+Microsoft → `service_disruption` (#22), minaccia bomba alle scuole → `hoax_disruption` (#14), e tutti
+gli advisory dei vendor con CVE nel sommario.
+
+**Conclusione asse A**: l'accordo sui casi facili (MSRC) è ~100%, sui casi a testo libero ~82%; il
+buco principale è l'**exploitation_signal** su stampa e CSIRT (parole come «catene di exploit»,
+«suspected exploitation», «RCE demo» non innescano la regola). È il bersaglio di miglioramento
+regole più utile, perché è l'etichetta di sicurezza più rilevante.
+
 ## Asse B — verifica dei fatti (distinta, in gran parte non stabilibile)
 
 La verifica dei fatti **non coincide** con l'accordo con le regole e in gran parte **non è
